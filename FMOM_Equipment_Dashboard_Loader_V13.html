@@ -1,0 +1,1392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>FMOM Equipment Support — Dashboard Loader</title>
+<link href="https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#F5F7FA;--surface:#FFFFFF;--surface2:#F0F2F5;--surface3:#E2E6EA;
+  --accent:#1A7F37;--accent2:#0969DA;--gold:#9A6700;--red:#CF222E;
+  --teal:#2DA44E;--purple:#8250DF;
+  --text:#1F2328;--muted:#57606A;--border:#D0D7DE;
+  --card:#FFFFFF;--card2:#F6F8FA;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:'Raleway',sans-serif;background:var(--bg);color:var(--text);line-height:1.6;overflow-x:hidden;font-size:14px}
+
+/* ─── NOISE TEXTURE ─── */
+body::before{content:'';position:fixed;inset:0;z-index:0;opacity:0.015;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  background-size:200px 200px;pointer-events:none}
+
+/* ─── DROP SCREEN ─── */
+#drop-screen{position:fixed;inset:0;z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg);transition:background .3s}
+#drop-screen.drag-over{background:#0a1a0a}
+.drop-wrap{text-align:center;max-width:560px;width:90%;position:relative;z-index:1}
+.drop-logo{font-family:'Raleway',sans-serif;font-size:11px;font-weight:700;letter-spacing:.3em;text-transform:uppercase;color:var(--accent);margin-bottom:48px;display:flex;align-items:center;justify-content:center;gap:10px}
+.drop-logo::before,.drop-logo::after{content:'';height:1px;width:40px;background:var(--accent);opacity:.4}
+.drop-box{border:1px solid var(--border);border-radius:16px;padding:56px 48px;background:var(--surface);cursor:pointer;transition:border-color .2s,background .2s;position:relative;overflow:hidden}
+.drop-box::before{content:'';position:absolute;inset:0;background:radial-gradient(circle at 50% 0%, rgba(63,185,80,.07) 0%, transparent 60%);pointer-events:none}
+.drop-box:hover{border-color:var(--accent);background:var(--surface2)}
+.drop-box:hover::before{background:radial-gradient(circle at 50% 0%, rgba(26,127,55,.10) 0%, transparent 60%)}
+.drop-icon{font-size:48px;margin-bottom:20px;display:block;animation:float 3.5s ease-in-out infinite}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+.drop-title{font-family:'Raleway',sans-serif;font-size:26px;font-weight:800;color:var(--text);margin-bottom:10px;letter-spacing:-.02em}
+.drop-title span{color:var(--accent)}
+.drop-sub{color:var(--muted);font-size:14px;font-weight:300;margin-bottom:32px;line-height:1.7}
+.drop-btn{display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:#FFFFFF;font-family:'Raleway',sans-serif;font-weight:700;font-size:13px;padding:11px 28px;border-radius:8px;cursor:pointer;border:none;transition:all .15s;letter-spacing:.02em}
+.drop-btn:hover{background:#52d869;transform:translateY(-1px);box-shadow:0 6px 20px rgba(26,127,55,.25)}
+.drop-hint{margin-top:20px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);opacity:.6;letter-spacing:.04em}
+.drop-error{color:var(--red);font-size:13px;margin-top:16px;min-height:20px;font-family:'IBM Plex Mono',monospace}
+#file-input{display:none}
+.drop-features{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:28px}
+.drop-feat{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:left}
+.drop-feat-icon{font-size:18px;margin-bottom:6px}
+.drop-feat-title{font-size:11px;font-weight:600;color:var(--text);margin-bottom:2px;font-family:'IBM Plex Mono',monospace;letter-spacing:.05em;text-transform:uppercase}
+.drop-feat-desc{font-size:11px;color:var(--muted);line-height:1.5}
+
+/* ─── TOP BUTTONS ─── */
+.top-btn{position:fixed;top:14px;z-index:1000;border:none;border-radius:8px;padding:7px 15px;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:500;cursor:pointer;display:none;transition:all .15s;letter-spacing:.03em}
+#reload-btn{right:14px;background:var(--surface2);color:var(--text);border:1px solid var(--border)}
+#reload-btn:hover{border-color:var(--accent);color:var(--accent)}
+#pdf-btn{right:130px;background:var(--surface2);color:var(--text);border:1px solid var(--border)}
+#pdf-btn:hover{border-color:var(--accent2);color:var(--accent2)}
+
+/* ─── PRINT ─── */
+@page{size:A4 portrait;margin:8mm}
+@media print{
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+  body{background:#F5F7FA!important;font-size:10px}
+  body::before{display:none}
+  #drop-screen,#reload-btn,#pdf-btn,.tab-bar,button{display:none!important}
+  #dashboard{display:block!important}
+  .tab-panel{display:block!important}
+  .pw{padding:0 8px 12px;max-width:100%}
+  .hero-inner{padding:12px}
+  .kg{grid-template-columns:repeat(4,1fr)!important;gap:6px}
+  .kc{padding:10px}
+  .kv{font-size:16px!important}
+  .cg,.cg2{grid-template-columns:1fr 1fr!important;gap:10px}
+  .cc{padding:12px}
+  canvas{max-width:100%!important;height:auto!important}
+  .ch{height:150px!important}
+  section{margin-top:16px}
+  .tw{overflow-x:visible!important}
+  table{width:100%!important;font-size:8px!important;table-layout:fixed}
+  thead th{padding:5px 4px!important;font-size:7.5px!important;white-space:normal!important}
+  td{padding:4px!important;font-size:8px!important;white-space:normal!important}
+  .print-break{display:block!important;break-before:page;padding-top:10px}
+  .print-label{display:block!important;font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:8px;padding:3px 8px;background:rgba(63,185,80,.1);border-radius:3px;width:fit-content}
+  footer{margin-top:12px}
+}
+
+/* ─── DASHBOARD ─── */
+#dashboard{display:none;position:relative;z-index:1}
+.pw{max-width:1280px;margin:0 auto;padding:0 32px 80px;position:relative;z-index:1}
+
+/* ─── HERO ─── */
+.hero{background:var(--surface);border-bottom:1px solid var(--border);position:relative;overflow:hidden}
+.hero::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:.4}
+.hero-glow{position:absolute;top:-80px;left:50%;transform:translateX(-50%);width:600px;height:300px;background:radial-gradient(ellipse,rgba(26,127,55,.06) 0%,transparent 70%);pointer-events:none}
+.hero-inner{max-width:1280px;margin:0 auto;padding:40px 32px 52px;display:grid;grid-template-columns:1fr auto;align-items:end;gap:32px}
+.hero-eyebrow{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.25em;text-transform:uppercase;color:var(--accent);margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.hero-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.4)}}
+.hero h1{font-family:'Raleway',sans-serif;font-size:clamp(24px,3.5vw,42px);font-weight:800;color:var(--text);line-height:1.05;letter-spacing:-.03em;margin-bottom:6px}
+.hero h1 em{font-style:normal;color:var(--accent)}
+.hero-sub{color:var(--muted);font-size:13px;font-weight:300}
+.hero-stats{display:flex;gap:32px;justify-content:flex-end;flex-wrap:wrap}
+.hs{text-align:right}
+.hs-v{font-family:'Raleway',sans-serif;font-size:28px;font-weight:800;color:var(--text);line-height:1;letter-spacing:-.03em}
+.hs-v.green{color:var(--accent)}
+.hs-v.blue{color:var(--accent2)}
+.hs-v.gold{color:var(--gold)}
+.hs-l{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:.08em;margin-top:3px}
+
+/* ─── TAB BAR ─── */
+.tab-bar{background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}
+.tab-bar-inner{max-width:1280px;margin:0 auto;padding:0 32px;display:flex}
+.tab-btn{padding:14px 24px;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:500;color:var(--muted);background:none;border:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .15s;display:flex;align-items:center;gap:8px;letter-spacing:.06em;text-transform:uppercase}
+.tab-btn:hover{color:var(--text)}
+.tab-btn.active{color:var(--text);border-bottom-color:var(--accent)}
+.tab-btn.active.blue-tab{border-bottom-color:var(--accent2)}
+.tab-btn.active.gold-tab{border-bottom-color:var(--gold)}
+.tab-btn.active.purple-tab{border-bottom-color:var(--purple)}
+.tab-badge{font-size:9px;background:var(--surface3);color:var(--muted);border-radius:20px;padding:2px 8px}
+.tab-btn.active .tab-badge{background:var(--accent);color:#000}
+.tab-btn.active.blue-tab .tab-badge{background:var(--accent2);color:#000}
+.tab-btn.active.gold-tab .tab-badge{background:var(--gold);color:#000}
+.tab-btn.active.purple-tab .tab-badge{background:var(--purple);color:#000}
+.tab-panel{display:none}.tab-panel.active{display:block}
+
+/* ─── SECTIONS ─── */
+section{margin-top:48px}
+.sl{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin-bottom:8px}
+.sl.blue{color:var(--accent2)}.sl.gold{color:var(--gold)}.sl.purple{color:var(--purple)}
+.st{font-family:'Raleway',sans-serif;font-size:clamp(18px,2.5vw,24px);font-weight:700;color:var(--text);letter-spacing:-.02em;margin-bottom:6px}
+.sd{color:var(--muted);font-size:13px;max-width:600px;margin-bottom:24px;font-weight:300;line-height:1.7}
+.sr{width:32px;height:2px;background:linear-gradient(90deg,var(--accent),transparent);margin-bottom:20px;border-radius:2px}
+.sr.blue{background:linear-gradient(90deg,var(--accent2),transparent)}
+.sr.gold{background:linear-gradient(90deg,var(--gold),transparent)}
+
+/* ─── KPI CARDS ─── */
+.kg{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:12px}
+.kc{background:var(--card);border-radius:12px;padding:18px 20px;border:1px solid var(--border);position:relative;overflow:hidden;transition:border-color .2s,transform .2s}
+.kc:hover{transform:translateY(-2px);border-color:var(--surface3)}
+.kc::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent),transparent)}
+.kc.blue::after{background:linear-gradient(90deg,var(--accent2),transparent)}
+.kc.gold::after{background:linear-gradient(90deg,var(--gold),transparent)}
+.kc.red::after{background:linear-gradient(90deg,var(--red),transparent)}
+.kc.purple::after{background:linear-gradient(90deg,var(--purple),transparent)}
+.ki{font-size:20px;margin-bottom:10px;display:block}
+.kv{font-family:'Raleway',sans-serif;font-size:24px;font-weight:800;color:var(--text);letter-spacing:-.03em;line-height:1;margin-bottom:5px}
+.kl{font-size:12px;color:var(--muted);margin-bottom:2px}
+.ks{font-size:11px;color:var(--accent);font-family:'IBM Plex Mono',monospace}
+.kc.blue .ks{color:var(--accent2)}.kc.gold .ks{color:var(--gold)}.kc.red .ks{color:var(--red)}.kc.purple .ks{color:var(--purple)}
+
+/* ─── CHART CARDS ─── */
+.cg{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.cg3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+.cg2{display:grid;grid-template-columns:2fr 1fr;gap:16px}
+.cc{background:var(--card);border-radius:12px;padding:22px;border:1px solid var(--border)}
+.cc.wide{grid-column:1/-1}
+.ct{font-family:'Raleway',sans-serif;font-size:14px;font-weight:700;color:var(--text);margin-bottom:2px}
+.csub{font-size:11px;color:var(--muted);margin-bottom:14px;font-family:'IBM Plex Mono',monospace}
+.ch{position:relative}
+
+/* ─── LEGEND ─── */
+.dw{display:grid;grid-template-columns:160px 1fr;gap:16px;align-items:center}
+.li{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.ld{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+.ll{font-size:11px;color:var(--muted)}.lv{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);margin-left:auto}
+
+/* ─── TABLE ─── */
+.tw{overflow-x:auto;border-radius:10px;border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead tr{background:var(--surface2)}
+thead th{padding:10px 13px;text-align:right;color:var(--muted);font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.1em;font-weight:500;white-space:nowrap;text-transform:uppercase}
+thead th:first-child{text-align:left}
+tbody tr{border-bottom:1px solid var(--border);transition:background .12s}
+tbody tr:hover{background:var(--surface2)}
+tbody tr.tot{background:var(--surface2);font-weight:600}
+tbody tr.tot td{color:var(--text);border-top:1px solid var(--surface3)}
+td{padding:9px 13px;text-align:right;color:var(--muted)}
+td:first-child{text-align:left;font-weight:500;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:11px}
+td.hi{color:var(--accent);font-weight:600}
+td.hi-blue{color:var(--accent2)}
+td.hi-gold{color:var(--gold)}
+td.mono{font-family:'IBM Plex Mono',monospace;font-size:11px}
+
+/* ─── STATUS BADGES ─── */
+.badge{display:inline-block;border-radius:4px;padding:2px 8px;font-size:10px;font-family:'IBM Plex Mono',monospace;font-weight:500;letter-spacing:.05em}
+.badge-green{background:rgba(63,185,80,.15);color:var(--accent);border:1px solid rgba(63,185,80,.3)}
+.badge-yellow{background:rgba(227,179,65,.15);color:var(--gold);border:1px solid rgba(227,179,65,.3)}
+.badge-red{background:rgba(248,81,73,.15);color:var(--red);border:1px solid rgba(248,81,73,.3)}
+.badge-blue{background:rgba(88,166,255,.15);color:var(--accent2);border:1px solid rgba(88,166,255,.3)}
+.badge-gray{background:rgba(139,148,158,.15);color:var(--muted);border:1px solid rgba(139,148,158,.3)}
+
+/* ─── SPARKLINES ─── */
+.spr{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.spc{flex:1;min-width:140px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
+.spl{font-size:9px;color:var(--muted);margin-bottom:3px;font-family:'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase}
+.spv{font-family:'Raleway',sans-serif;font-size:16px;font-weight:700;color:var(--text)}
+.spt{font-size:10px;margin-top:2px;font-family:'IBM Plex Mono',monospace}
+.up{color:var(--accent)}.dn{color:var(--red)}.neu{color:var(--muted)}
+
+/* ─── DATA EXPLORER ─── */
+.de-toolbar{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:12px}
+.de-f{display:flex;flex-direction:column;gap:4px}
+.de-f label{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase}
+.de-f select,.de-f input{font-family:'Raleway',sans-serif;font-size:12px;color:var(--text);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;outline:none;min-width:120px}
+.de-f select:focus,.de-f input:focus{border-color:var(--accent)}
+.de-btn{padding:8px 18px;border-radius:6px;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:500;border:none;cursor:pointer;align-self:flex-end;letter-spacing:.04em;text-transform:uppercase}
+.de-btn.apply{background:var(--accent);color:#000}.de-btn.apply:hover{background:#52d869}
+.de-btn.reset{background:var(--surface2);color:var(--muted);border:1px solid var(--border)}.de-btn.reset:hover{border-color:var(--red);color:var(--red)}
+.de-pills{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;min-height:24px}
+.de-pill{font-family:'IBM Plex Mono',monospace;font-size:10px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:20px;padding:3px 11px;display:inline-flex;align-items:center;gap:5px}
+.de-pill b{color:var(--text)}
+.de-tc{background:var(--card);border-radius:12px;border:1px solid var(--border);overflow:hidden}
+.de-tc table{font-size:11px}
+.de-tc thead th{font-size:9px;padding:10px 12px;cursor:pointer;user-select:none;white-space:nowrap;transition:background .12s}
+.de-tc thead th:hover{background:var(--surface3)}
+.de-tc thead th.asc::after{content:" ▲";color:var(--accent);font-size:8px}
+.de-tc thead th.desc::after{content:" ▼";color:var(--accent);font-size:8px}
+.de-tc td{padding:8px 12px;font-size:11px}
+.de-tc td:first-child{font-family:'IBM Plex Mono',monospace;font-size:10px}
+.de-empty{text-align:center;padding:40px;color:var(--muted)}
+.de-pager{display:flex;align-items:center;justify-content:space-between;margin-top:10px;flex-wrap:wrap;gap:8px;padding:4px 0}
+.de-pager-info{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted)}
+.de-pager-btns{display:flex;gap:6px}
+.de-pb{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 14px;font-size:11px;font-family:'IBM Plex Mono',monospace;cursor:pointer;color:var(--muted)}
+.de-pb:hover{border-color:var(--accent);color:var(--accent)}
+.de-pb:disabled{opacity:.3;cursor:not-allowed}
+.de-charts{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.de-chart-box{background:var(--surface);border-radius:10px;padding:16px;border:1px solid var(--border)}
+.de-chart-title{font-family:'Raleway',sans-serif;font-size:12px;font-weight:700;color:var(--text);margin-bottom:2px}
+.de-chart-sub{font-size:10px;color:var(--muted);margin-bottom:10px;font-family:'IBM Plex Mono',monospace}
+@media(max-width:700px){.de-charts{grid-template-columns:1fr}}
+
+/* ─── FINDINGS CARDS ─── */
+.fg{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.fc{background:var(--card);border-radius:10px;padding:16px 18px;border:1px solid var(--border);border-left:2px solid var(--accent);display:flex;gap:14px;align-items:flex-start;transition:border-left-color .2s}
+.fc:hover{border-left-color:var(--gold)}
+.fc.blue{border-left-color:var(--accent2)}.fc.gold{border-left-color:var(--gold)}.fc.purple{border-left-color:var(--purple)}.fc.red{border-left-color:var(--red)}
+.fn{font-family:'Raleway',sans-serif;font-size:22px;font-weight:800;color:var(--surface3);line-height:1;flex-shrink:0;width:28px}
+.ft{font-size:12px;line-height:1.6;color:var(--muted)}.ft strong{font-weight:600;color:var(--text)}
+
+/* ─── TOP LIST ─── */
+.top-list{list-style:none}
+.top-item{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)}
+.top-item:last-child{border-bottom:none}
+.top-rank{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);width:20px;text-align:right;flex-shrink:0}
+.top-name{font-size:12px;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.top-bar-wrap{width:120px;height:4px;background:var(--surface3);border-radius:2px;flex-shrink:0}
+.top-bar{height:4px;border-radius:2px;background:var(--accent);transition:width .4s}
+.top-count{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--accent);font-weight:500;flex-shrink:0;min-width:30px;text-align:right}
+
+/* ─── PROGRESS ─── */
+.prog-wrap{margin-top:8px}
+.prog-item{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.prog-label{font-size:11px;color:var(--muted);width:80px;flex-shrink:0;text-align:right;font-family:'IBM Plex Mono',monospace}
+.prog-bar-wrap{flex:1;height:6px;background:var(--surface3);border-radius:3px}
+.prog-bar{height:6px;border-radius:3px;transition:width .5s ease}
+.prog-pct{font-size:11px;font-family:'IBM Plex Mono',monospace;color:var(--muted);width:38px;text-align:right}
+
+/* ─── PENDING TABLE ─── */
+.pending-row td:first-child{color:var(--gold)}
+
+/* ─── FOOTER ─── */
+footer{margin-top:64px;border-top:1px solid var(--border);padding-top:24px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px}
+footer .fl{font-size:12px;color:var(--muted)}.fl strong{color:var(--text)}
+footer .fr{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);text-align:right;line-height:1.8}
+@media(max-width:960px){.kg{grid-template-columns:repeat(2,1fr)}.cg,.cg2,.cg3{grid-template-columns:1fr}.dw{grid-template-columns:1fr}.fg{grid-template-columns:1fr}.pw{padding:0 16px 60px}.tab-btn{padding:12px 14px;font-size:10px}.hero-inner{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<!-- ─── DROP SCREEN ─── -->
+<div id="drop-screen">
+  <div class="drop-wrap">
+    <div class="drop-logo">In-House Projects-Equipment Support</div>
+    <div class="drop-box" id="drop-box" onclick="document.getElementById('file-input').click()">
+      <span class="drop-icon">📋</span>
+      <div class="drop-title">Equipment <span>Support Log</span> Dashboard</div>
+      <div class="drop-sub">Drop your Equipment Support Requests Excel file here.<br>The dashboard will auto-build a comprehensive report from your data.</div>
+      <button class="drop-btn" onclick="event.stopPropagation();document.getElementById('file-input').click()">
+        ↑ &nbsp; Choose Excel File
+      </button>
+      <div class="drop-hint">Accepts .xlsx · Reads "Masterlist" sheet automatically</div>
+      <div class="drop-error" id="drop-error"></div>
+    </div>
+    <div class="drop-features">
+      <div class="drop-feat">
+        <div class="drop-feat-icon">📊</div>
+        <div class="drop-feat-title">5 Dashboards</div>
+        <div class="drop-feat-desc">Overview, trends, categories, requestors & data explorer</div>
+      </div>
+      <div class="drop-feat">
+        <div class="drop-feat-icon">🔍</div>
+        <div class="drop-feat-title">Full Search</div>
+        <div class="drop-feat-desc">Filter by year, status, type, category, and technician</div>
+      </div>
+      <div class="drop-feat">
+        <div class="drop-feat-icon">🖨</div>
+        <div class="drop-feat-title">PDF Export</div>
+        <div class="drop-feat-desc">Print-optimized layout for all pages at once</div>
+      </div>
+    </div>
+  </div>
+  <input type="file" id="file-input" accept=".xlsx,.xls">
+</div>
+
+<!-- ─── TOP BUTTONS ─── -->
+<button class="top-btn" id="reload-btn" onclick="document.getElementById('file-input').click()">⟳ New File</button>
+<button class="top-btn" id="pdf-btn" onclick="window.print()">⬇ PDF</button>
+
+<!-- ─── DASHBOARD ─── -->
+<div id="dashboard">
+
+<header class="hero">
+  <div class="hero-glow"></div>
+  <div class="hero-inner">
+    <div>
+      <div class="hero-eyebrow"><span class="hero-dot"></span>Live Report</div>
+                <div class="header"><img alt="KAUST Logo" src="data:image/jpeg;base64,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" style="height: 90px; margin-bottom: 10px; border-radius: 50%; border: 2px solid rgba(200,151,58,0.7); padding: 14px; background: rgba(255,255,255,0.95);"/>
+      <h1>In-House Projects Equipment<br><em>Support Requests</em></h1>
+      <div class="hero-sub" id="hero-sub">Comprehensive analysis from masterlist data</div>
+    </div>
+    <div class="hero-stats">
+      <div class="hs"><div class="hs-v green" id="hm-total">—</div><div class="hs-l">TOTAL REQUESTS</div></div>
+      <div class="hs"><div class="hs-v blue" id="hm-completed">—</div><div class="hs-l">COMPLETED</div></div>
+      <div class="hs"><div class="hs-v gold" id="hm-cost">—</div><div class="hs-l">TOTAL PO COST</div></div>
+    </div>
+  </div>
+</header>
+
+<nav class="tab-bar">
+  <div class="tab-bar-inner">
+    <button class="tab-btn active" onclick="switchTab('t1',this)">Overview <span class="tab-badge" id="badge-t1">—</span></button>
+    <button class="tab-btn blue-tab" onclick="switchTab('t2',this)">Trends <span class="tab-badge" id="badge-t2">—</span></button>
+    <button class="tab-btn gold-tab" onclick="switchTab('t3',this)">Categories <span class="tab-badge" id="badge-t3">—</span></button>
+    <button class="tab-btn purple-tab" onclick="switchTab('t4',this)">Requestors &amp; Technicians <span class="tab-badge" id="badge-t4">—</span></button>
+    <button class="tab-btn" onclick="switchTab('t5',this)">Data Explorer <span class="tab-badge" id="badge-t5">—</span></button>
+  </div>
+</nav>
+
+<!-- ══ TAB 1: OVERVIEW ══ -->
+<div id="t1" class="tab-panel active"><div class="pw">
+<section>
+  <div class="sl">At a Glance</div>
+  <div class="st">Program Overview</div>
+  <div class="sd">Key performance indicators across the full equipment support program.</div>
+  <div class="sr"></div>
+  <div class="kg" id="kpi-row1"></div>
+  <div class="kg" id="kpi-row2"></div>
+</section>
+
+<section>
+  <div class="sl">Annual Performance</div>
+  <div class="st">Requests by Year</div>
+  <div class="sd">Total requests received and completion rate per year, with PO cost overlay.</div>
+  <div class="sr"></div>
+  <div class="cc wide">
+    <div class="ct">Annual Request Volume &amp; Cost</div>
+    <div class="csub" id="annual-sub">Loading…</div>
+    <div class="ch" style="height:280px"><canvas id="annualChart"></canvas></div>
+  </div>
+</section>
+
+<section>
+  <div class="sl">Delivery Method &amp; Status</div>
+  <div class="st">Direct vs Third Party &amp; Completion Status</div>
+  <div class="sd">Breakdown of installation delivery method and ICR signing status by year.</div>
+  <div class="sr"></div>
+  <div class="cg">
+    <div class="cc">
+      <div class="ct">Direct vs Third Party by Year</div>
+      <div class="csub">Stacked count per year</div>
+      <div class="ch" style="height:240px"><canvas id="typeChart"></canvas></div>
+    </div>
+    <div class="cc">
+      <div class="ct">ICR Signing Status by Year</div>
+      <div class="csub">Issued/Signed vs Not Issued</div>
+      <div class="ch" style="height:240px"><canvas id="icrStatusChart"></canvas></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sl">Pending &amp; Active</div>
+  <div class="st">Open Items</div>
+  <div class="sd">Requests that are pending or not yet completed.</div>
+  <div class="sr"></div>
+  <div class="tw">
+    <table>
+      <thead><tr>
+        <th>S.No.</th><th>Year</th><th>Request No.</th><th>Requestor</th><th style="text-align:left">Description</th><th>Type</th><th>Status</th>
+      </tr></thead>
+      <tbody id="pending-tbody"></tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <div class="sl">Annual Summary</div>
+  <div class="st">Complete Year-by-Year Table</div>
+  <div class="sd">Aggregated metrics by calendar year across all tracked dimensions.</div>
+  <div class="sr"></div>
+  <div class="tw">
+    <table>
+      <thead><tr>
+        <th>Year</th><th>Requests</th><th>Completed</th><th>Cancelled</th><th>Direct</th><th>3rd Party</th><th>Issued/Signed</th><th>Not Issued</th><th>PO Cost</th>
+      </tr></thead>
+      <tbody id="annual-tbody"></tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <div class="sl">Key Insights</div>
+  <div class="st">Program Highlights</div>
+  <div class="sr"></div>
+  <div class="fg" id="findings"></div>
+</section>
+<footer><div class="fl"><strong>FMOM Equipment Support Dashboard</strong><br>Auto-generated from uploaded data file</div><div class="fr" id="footer-t1">—</div></footer>
+</div></div>
+
+<!-- ══ TAB 2: TRENDS ══ -->
+<div id="t2" class="tab-panel"><div class="pw">
+<div class="print-break" style="display:none"></div><div class="print-label" style="display:none">📈 Trends</div>
+<section>
+  <div class="sl blue">Year-over-Year</div>
+  <div class="st">Trend Analysis</div>
+  <div class="sd">Historical patterns in request volume, completion, and cost over time.</div>
+  <div class="sr blue"></div>
+  <div class="spr" id="sparks-t2"></div>
+</section>
+
+<section>
+  <div class="sl blue">Completion Rates</div>
+  <div class="st">Efficiency Over Time</div>
+  <div class="sd">Completion rate and average PO cost per request by year.</div>
+  <div class="sr blue"></div>
+  <div class="cc wide">
+      <div class="ct">Average PO Cost per Completed Request</div>
+      <div class="csub">Requests with PO cost &gt; 0 only</div>
+      <div class="ch" style="height:220px"><canvas id="avgCostChart"></canvas></div>
+  </div>
+</section>
+
+
+<section>
+  <div class="sl blue">Delivery Method Trends</div>
+  <div class="st">Direct vs Third Party — Historical Patterns</div>
+  <div class="sd">Year-over-year count and percentage mix of direct FMOM installs vs third party vendor jobs.</div>
+  <div class="sr blue"></div>
+  <div class="cg">
+    <div class="cc">
+      <div class="ct">Direct vs Third Party — Annual Count</div>
+      <div class="csub">Stacked bar by year</div>
+      <div class="ch" style="height:240px"><canvas id="trendTypeCountChart"></canvas></div>
+    </div>
+    <div class="cc">
+      <div class="ct">Direct vs Third Party — % Share</div>
+      <div class="csub">Percentage of total per year</div>
+      <div class="ch" style="height:240px"><canvas id="trendTypePctChart"></canvas></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sl blue">Category Trends</div>
+  <div class="st">Capital, Baseline, Existing &amp; Casework Over Time</div>
+  <div class="sd">Annual request volume per equipment category — track how the mix has shifted year by year.</div>
+  <div class="sr blue"></div>
+  <div class="cg">
+    <div class="cc">
+      <div class="ct">Category Count by Year</div>
+      <div class="csub">Capital · Baseline · Existing · Casework</div>
+      <div class="ch" style="height:240px"><canvas id="trendCatCountChart"></canvas></div>
+    </div>
+    <div class="cc">
+      <div class="ct">Category % Share by Year</div>
+      <div class="csub">Proportion of total per year</div>
+      <div class="ch" style="height:240px"><canvas id="trendCatPctChart"></canvas></div>
+    </div>
+  </div>
+</section>
+
+<footer><div class="fl"><strong>FMOM Equipment Support Dashboard</strong><br>Trends</div><div class="fr" id="footer-t2">—</div></footer>
+</div></div>
+
+<!-- ══ TAB 3: CATEGORIES ══ -->
+<div id="t3" class="tab-panel"><div class="pw">
+<div class="print-break" style="display:none"></div><div class="print-label" style="display:none">📦 Equipment Categories</div>
+<section>
+  <div class="sl gold">Equipment Categories</div>
+  <div class="st">Category Breakdown</div>
+  <div class="sd">Distribution of requests by equipment category and associated costs.</div>
+  <div class="sr gold"></div>
+  <div class="kg" id="kpi-cat"></div>
+  <div class="cg2">
+    <div class="cc">
+      <div class="ct">Equipment Category Distribution</div>
+      <div class="csub">By request count</div>
+      <div class="ch" style="height:260px"><canvas id="catChart"></canvas></div>
+    </div>
+    <div class="cc">
+      <div class="ct">Category Legend</div>
+      <div class="csub">Count and cost breakdown</div>
+      <div id="cat-legend"></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sl gold">Category by Year</div>
+  <div class="st">Category Trends Over Time</div>
+  <div class="sd">How the mix of equipment categories has evolved each year.</div>
+  <div class="sr gold"></div>
+  <div class="cc wide">
+    <div class="ct">Equipment Category Stack by Year</div>
+    <div class="csub">Capital, Baseline, Existing, Casework, Surplus</div>
+    <div class="ch" style="height:280px"><canvas id="catYearChart"></canvas></div>
+  </div>
+</section>
+
+<section>
+  <div class="sl gold">PO Cost by Category</div>
+  <div class="st">Financial Summary by Category</div>
+  <div class="sd">Total PO value attributed to each equipment category.</div>
+  <div class="sr gold"></div>
+  <div class="tw">
+    <table>
+      <thead><tr>
+        <th>Equipment Category</th><th>Requests</th><th>% of Total</th><th>Completed</th><th>Direct</th><th>3rd Party</th><th>Total PO Cost</th><th>Avg Cost/Request</th>
+      </tr></thead>
+      <tbody id="cat-tbody"></tbody>
+    </table>
+  </div>
+</section>
+<footer><div class="fl"><strong>FMOM Equipment Support Dashboard</strong><br>Categories</div><div class="fr" id="footer-t3">—</div></footer>
+</div></div>
+
+<!-- ══ TAB 4: REQUESTORS & TECHNICIANS ══ -->
+<div id="t4" class="tab-panel"><div class="pw">
+<div class="print-break" style="display:none"></div><div class="print-label" style="display:none">👥 Requestors &amp; Technicians</div>
+<section>
+  <div class="sl purple">Requestors</div>
+  <div class="st">Top Requestors</div>
+  <div class="sd">Individuals and groups with the highest number of submitted requests.</div>
+  <div class="sr" style="background:linear-gradient(90deg,var(--purple),transparent)"></div>
+  <div class="cg">
+    <div class="cc">
+      <div class="ct">Top 15 Requestors by Volume</div>
+      <div class="csub">All-time request count</div>
+      <ul class="top-list" id="top-requestors"></ul>
+    </div>
+    <div class="cc">
+      <div class="ct">Top Requestors — All Time</div>
+      <div class="csub">Top 10 by all-time request count</div>
+      <div class="ch" style="height:280px"><canvas id="reqChart"></canvas></div>
+    </div>
+  </div>
+
+  <div style="margin-top:32px">
+    <div class="sl purple">Last 6 Months</div>
+    <div class="st">Recent Top Requestors</div>
+    <div class="sd">Requestors ranked by completed requests in the last 6 months, based on Date Completed.</div>
+    <div class="sr" style="background:linear-gradient(90deg,var(--purple),transparent)"></div>
+    <div class="cg">
+      <div class="cc">
+        <div class="ct">Top 15 Requestors — Last 6 Months</div>
+        <div class="csub" id="req6m-sub">Loading…</div>
+        <ul class="top-list" id="top-requestors-6m"></ul>
+      </div>
+      <div class="cc">
+        <div class="ct">Top Requestors — Last 6 Months</div>
+        <div class="csub" id="req6m-chart-sub">Top 10 by recent completions</div>
+        <div class="ch" style="height:280px"><canvas id="reqChart6m"></canvas></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sl purple">Technicians</div>
+  <div class="st">Assigned Technician Workload</div>
+  <div class="sd">Distribution of work assignments across FMOM technicians and teams.</div>
+  <div class="sr" style="background:linear-gradient(90deg,var(--purple),transparent)"></div>
+  <div class="cg">
+    <div class="cc">
+      <div class="ct">Top 10 Technician Assignments</div>
+      <div class="csub">All-time assignment count</div>
+      <ul class="top-list" id="top-techs"></ul>
+    </div>
+    <div class="cc">
+      <div class="ct">Technician Share — Donut</div>
+      <div class="csub">Share of total assignments</div>
+      <div class="ch" style="height:280px"><canvas id="techDonut"></canvas></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sl purple">Direct vs 3rd Party</div>
+  <div class="st">Delivery Method Analysis</div>
+  <div class="sd">Comparison of direct FMOM installations against third party vendor jobs.</div>
+  <div class="sr" style="background:linear-gradient(90deg,var(--purple),transparent)"></div>
+  <div class="cg3">
+    <div class="cc">
+      <div class="ct">Direct vs 3rd Party — All Time</div>
+      <div class="csub">Total request count</div>
+      <div class="ch" style="height:200px"><canvas id="typeDonut"></canvas></div>
+    </div>
+    <div class="cc">
+      <div class="ct">Direct vs 3rd Party — Trend</div>
+      <div class="csub">Annual percentage mix</div>
+      <div class="ch" style="height:200px"><canvas id="typeTrendChart"></canvas></div>
+    </div>
+    <div class="cc">
+      <div class="ct">Delivery Method Details</div>
+      <div class="csub">Count and percentage breakdown</div>
+      <div id="type-legend" style="margin-top:8px"></div>
+    </div>
+  </div>
+</section>
+<footer><div class="fl"><strong>FMOM Equipment Support Dashboard</strong><br>Requestors &amp; Technicians</div><div class="fr" id="footer-t4">—</div></footer>
+</div></div>
+
+<!-- ══ TAB 5: DATA EXPLORER ══ -->
+<div id="t5" class="tab-panel"><div class="pw">
+<div class="print-break" style="display:none"></div><div class="print-label" style="display:none">🔍 Data Explorer</div>
+<section>
+  <div class="sl">All Records</div>
+  <div class="st">Data Explorer</div>
+  <div class="sd">Search, filter, and sort every request in the masterlist.</div>
+  <div class="sr"></div>
+  <div class="de-toolbar">
+    <div class="de-f"><label>Year</label><select id="f-year" onchange="deApply()"><option value="">All Years</option></select></div>
+    <div class="de-f"><label>Month</label><select id="f-month" onchange="deApply()"><option value="">All Months</option><option value="1">January</option><option value="2">February</option><option value="3">March</option><option value="4">April</option><option value="5">May</option><option value="6">June</option><option value="7">July</option><option value="8">August</option><option value="9">September</option><option value="10">October</option><option value="11">November</option><option value="12">December</option></select></div>
+    <div class="de-f"><label>Date</label><input type="number" id="f-day" placeholder="Day (1–31)" min="1" max="31" oninput="deApply()" style="min-width:110px"></div>
+    <div class="de-f"><label>Status</label><select id="f-status" onchange="deApply()"><option value="">All Statuses</option></select></div>
+    <div class="de-f"><label>Type</label><select id="f-type" onchange="deApply()"><option value="">All Types</option></select></div>
+    <div class="de-f"><label>Category</label><select id="f-cat" onchange="deApply()"><option value="">All Categories</option></select></div>
+    <div class="de-f"><label>ICR Status</label><select id="f-icr" onchange="deApply()"><option value="">All ICR Status</option></select></div>
+    <div class="de-f"><label>Search</label><input type="text" id="f-search" placeholder="Description / Requestor…" oninput="deApply()" style="min-width:180px"></div>
+  </div>
+  <div class="de-toolbar" style="margin-top:8px">
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase;align-self:center;padding-right:4px;white-space:nowrap">Date Completed</div>
+    <div class="de-f"><label>Year</label><select id="f-dc-year" onchange="deApply()"><option value="">All Years</option></select></div>
+    <div class="de-f"><label>Month</label><select id="f-dc-month" onchange="deApply()"><option value="">All Months</option><option value="1">January</option><option value="2">February</option><option value="3">March</option><option value="4">April</option><option value="5">May</option><option value="6">June</option><option value="7">July</option><option value="8">August</option><option value="9">September</option><option value="10">October</option><option value="11">November</option><option value="12">December</option></select></div>
+    <div class="de-f"><label>Date</label><input type="number" id="f-dc-day" placeholder="Day (1–31)" min="1" max="31" oninput="deApply()" style="min-width:110px"></div>
+    <button class="de-btn reset" onclick="deReset()" style="margin-left:auto">✕ Reset</button>
+  </div>
+  <div class="de-pills" id="de-pills"></div>
+  <div class="de-charts" style="grid-template-columns:1fr 1fr 1fr">
+    <div class="de-chart-box">
+      <div class="de-chart-title">Capital vs Baseline — PO Cost</div>
+      <div class="de-chart-sub" id="de-cost-sub">Filtered records</div>
+      <div style="position:relative;height:180px"><canvas id="deCapBaseChart"></canvas></div>
+    </div>
+    <div class="de-chart-box">
+      <div class="de-chart-title">Filtered — Category Mix</div>
+      <div class="de-chart-sub">Equipment category distribution</div>
+      <div style="position:relative;height:180px"><canvas id="deCatChart"></canvas></div>
+    </div>
+    <div class="de-chart-box">
+      <div class="de-chart-title">Direct vs Third Party</div>
+      <div class="de-chart-sub">Filtered request count</div>
+      <div style="position:relative;height:180px"><canvas id="deTypeChart"></canvas></div>
+    </div>
+  </div>
+  <div class="de-tc">
+    <table id="de-tbl">
+      <thead><tr>
+        <th onclick="deSort('sno')">S.No.</th>
+        <th onclick="deSort('year')">Year</th>
+        <th onclick="deSort('requestor')">Requestor</th>
+        <th onclick="deSort('desc')">Description</th>
+        <th onclick="deSort('type')">Type</th>
+        <th onclick="deSort('status')">Status</th>
+        <th onclick="deSort('icrstatus')">ICR Status</th>
+        <th onclick="deSort('icrNo')">ICR No.</th>
+        <th onclick="deSort('category')">Category</th>
+        <th onclick="deSort('cost')">PO Cost</th>
+        <th onclick="deSort('tech')">Technician</th>
+      </tr></thead>
+      <tbody id="de-body"></tbody>
+    </table>
+  </div>
+  <div class="de-pager">
+    <span class="de-pager-info" id="de-info"></span>
+    <div class="de-pager-btns">
+      <button class="de-pb" id="de-prev" onclick="dePage(-1)">← Prev</button>
+      <button class="de-pb" id="de-next" onclick="dePage(1)">Next →</button>
+    </div>
+  </div>
+</section>
+<footer><div class="fl"><strong>FMOM Equipment Support Dashboard</strong><br>Data Explorer</div><div class="fr" id="footer-t5">—</div></footer>
+</div></div>
+
+</div><!-- /dashboard -->
+
+<script>
+/* ════════ COLOUR PALETTE ════════ */
+var C_GREEN='#3FB950',C_BLUE='#58A6FF',C_GOLD='#E3B341',C_RED='#F85149',
+    C_PURPLE='#BC8CFF',C_TEAL='#39D353',C_MUTED='#8B949E',
+    C_SURFACE2='#21262D',C_SURFACE3='#30363D';
+var CAT_COLORS={
+  'Capital':C_GOLD,'Baseline':C_BLUE,'Existing':C_GREEN,
+  'Casework':C_PURPLE,'Surplus':C_RED,'Non Academic':C_MUTED,'nan':'#555'
+};
+Chart.defaults.font.family="'Raleway',sans-serif";
+Chart.defaults.color='#57606A';
+Chart.defaults.borderColor='#D0D7DE';
+
+/* ════════ CHART UTILS ════════ */
+var _charts={};
+function mkChart(id,cfg){if(_charts[id]){_charts[id].destroy();delete _charts[id];}try{_charts[id]=new Chart(document.getElementById(id),cfg);}catch(e){}return _charts[id];}
+
+/* ════════ TAB SWITCH ════════ */
+function switchTab(id,btn){
+  document.querySelectorAll('.tab-panel').forEach(function(p){p.classList.remove('active');});
+  document.querySelectorAll('.tab-btn').forEach(function(b){b.classList.remove('active');});
+  document.getElementById(id).classList.add('active');
+  btn.classList.add('active');
+}
+
+/* ════════ FILE DROP ════════ */
+var dropScreen=document.getElementById('drop-screen');
+dropScreen.addEventListener('dragover',function(e){e.preventDefault();dropScreen.classList.add('drag-over');});
+dropScreen.addEventListener('dragleave',function(){dropScreen.classList.remove('drag-over');});
+dropScreen.addEventListener('drop',function(e){e.preventDefault();dropScreen.classList.remove('drag-over');var f=e.dataTransfer.files[0];if(f)loadFile(f);});
+document.getElementById('file-input').addEventListener('change',function(e){if(e.target.files[0])loadFile(e.target.files[0]);this.value='';});
+
+function loadFile(file){
+  document.getElementById('drop-error').textContent='';
+  if(!/\.(xlsx|xls)$/i.test(file.name)){document.getElementById('drop-error').textContent='Please upload an .xlsx or .xls file.';return;}
+  var reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      var wb=XLSX.read(e.target.result,{type:'array',cellDates:false});
+      // Find the masterlist sheet
+      var sheetName=null;
+      wb.SheetNames.forEach(function(n){if(n.toLowerCase().indexOf('masterlist')>=0)sheetName=n;});
+      if(!sheetName)sheetName=wb.SheetNames[0];
+      var ws=wb.Sheets[sheetName];
+      var raw=XLSX.utils.sheet_to_json(ws,{header:1,defval:null});
+      parseAndRender(raw,file.name,sheetName);
+    }catch(err){document.getElementById('drop-error').textContent='Error reading file: '+err.message;}
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+/* ════════ PARSE EXCEL ════════ */
+var DE_ALL=[]; // global store for data explorer
+function parseAndRender(raw,filename,sheetName){
+  // Find header row (row with 'S.No.' or 'S.no.' or date received)
+  var headerRow=-1;
+  for(var i=0;i<Math.min(raw.length,20);i++){
+    var r=raw[i];
+    if(!r)continue;
+    for(var j=0;j<r.length;j++){
+      if(r[j]&&String(r[j]).trim().toLowerCase().replace(/[.\s]/g,'').indexOf('sno')>=0){headerRow=i;break;}
+    }
+    if(headerRow>=0)break;
+  }
+  if(headerRow<0){document.getElementById('drop-error').textContent='Could not find data header row (looking for S.No. column).';return;}
+
+  // Map column indices from header
+  var cols={};
+  var hrow=raw[headerRow];
+  for(var c=0;c<hrow.length;c++){
+    var h=hrow[c]?String(hrow[c]).replace(/\n/g,' ').trim().toLowerCase():'';
+    if(h.indexOf('s.no')>=0||h==='s.no.')cols.sno=c;
+    else if(h.indexOf('date')>=0&&h.indexOf('receiv')>=0)cols.dateReceived=c;
+    else if(h==='year')cols.year=c;
+    else if(h.indexOf('request no')>=0||h.indexOf('request no.')>=0)cols.reqno=c;
+    else if(h==='requestor')cols.requestor=c;
+    else if(h.indexOf('project desc')>=0||h.indexOf('description')>=0)cols.desc=c;
+    else if(h.indexOf('direct')>=0||h.indexOf('third party')>=0)cols.type=c;
+    else if(h.indexOf('progress status')>=0)cols.status=c;
+    else if(h.indexOf('progress update')>=0)cols.update=c;
+    else if(h.indexOf('date')>=0&&h.indexOf('complet')>=0)cols.dateCompleted=c;
+    else if(h.indexOf('icr')>=0&&h.indexOf('status')>=0)cols.icrStatus=c;
+    else if(h.indexOf('icr no')>=0||h==='icr no.')cols.icrNo=c;
+    else if(h.indexOf('number of icr')>=0)cols.numICR=c;
+    else if(h.indexOf('cost')>=0&&h.indexOf('po')>=0)cols.cost=c;
+    else if(h.indexOf('po#')>=0||h==='po#')cols.poNo=c;
+    else if(h.indexOf('work')>=0&&h.indexOf('duration')>=0)cols.duration=c;
+    else if(h.indexOf('eqp')>=0&&h.indexOf('cat')>=0)cols.category=c;
+    else if(h.indexOf('assigned')>=0||h.indexOf('technician')>=0)cols.tech=c;
+    else if(h.indexOf('lfo')>=0)cols.lfo=c;
+  }
+
+  // Skip blank rows after header (can be spacer rows)
+  var startRow=headerRow+1;
+  while(startRow<raw.length&&(!raw[startRow]||!raw[startRow][cols.sno||0])){startRow++;}
+
+  var DATA=[];
+  for(var ri=startRow;ri<raw.length;ri++){
+    var row=raw[ri];
+    if(!row||!row[cols.sno])continue;
+    var sno=parseInt(row[cols.sno])||0;
+    if(!sno)continue;
+
+    var dr=parseDate(row[cols.dateReceived]);
+    var dc=parseDate(row[cols.dateCompleted]);
+    var year=parseInt(row[cols.year])||( dr?dr.year:0);
+    var type=clean(row[cols.type]);
+    // Normalize type
+    var typeNorm='Unknown';
+    if(type){var tl=type.toLowerCase();if(tl.indexOf('third')>=0)typeNorm='Third Party';else if(tl.indexOf('direct')>=0)typeNorm='Direct';}
+
+    DATA.push({
+      sno:sno,
+      date:dr?dr.iso:'',
+      year:year,
+      reqno:clean(row[cols.reqno]),
+      requestor:clean(row[cols.requestor]),
+      desc:clean(row[cols.desc]),
+      type:typeNorm,
+      update:clean(row[cols.update]),
+      status:clean(row[cols.status])||'',
+      dateCompleted:dc?dc.iso:'',
+      icrStatus:clean(row[cols.icrStatus])||'',
+      icrNo:clean(row[cols.icrNo])||'',
+      numICR:parseInt(row[cols.numICR])||0,
+      cost:parseFloat(row[cols.cost])||0,
+      poNo:clean(row[cols.poNo]),
+      duration:parseFloat(row[cols.duration])||0,
+      category:clean(row[cols.category])||'',
+      tech:clean(row[cols.tech])||''
+    });
+  }
+
+  if(!DATA.length){document.getElementById('drop-error').textContent='No data rows found. Check that the Masterlist sheet has data starting from row 7.';return;}
+
+  DATA.sort(function(a,b){return a.sno<b.sno?1:-1;}); // newest first
+  DE_ALL=DATA;
+
+  // Show dashboard
+  dropScreen.style.display='none';
+  document.getElementById('dashboard').style.display='block';
+  document.getElementById('reload-btn').style.display='block';
+  document.getElementById('pdf-btn').style.display='block';
+
+  buildDashboard(DATA,filename,sheetName);
+}
+
+function parseDate(v){
+  if(!v)return null;
+  var y,m,d;
+  if(typeof v==='number'&&v>1){
+    var p=XLSX.SSF.parse_date_code(v);
+    if(!p||!p.y)return null;
+    y=p.y;m=p.m;d=p.d;
+  } else if(typeof v==='string'&&v.trim()){
+    var tmp=new Date(v.trim());
+    if(isNaN(tmp.getTime()))return null;
+    y=tmp.getFullYear();m=tmp.getMonth()+1;d=tmp.getDate();
+  } else if(v instanceof Date&&!isNaN(v.getTime())){
+    y=v.getFullYear();m=v.getMonth()+1;d=v.getDate();
+  } else return null;
+  return{year:y,month:m,day:d,iso:y+'-'+p2(m)+'-'+p2(d),label:MONTHS[m-1]+' '+y};
+}
+function p2(n){return n<10?'0'+n:String(n);}
+function clean(v){if(v===null||v===undefined)return '';var s=String(v).trim();return s==='null'||s==='nan'?'':s;}
+function fmtCost(v){if(!v||v===0)return '—';return '$'+Math.round(v).toLocaleString();}
+function fmtCostM(v){if(!v)return '$0';return '$'+(v/1e6).toFixed(2)+'M';}
+var MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+/* ════════ BUILD DASHBOARD ════════ */
+function buildDashboard(DATA,filename,sheetName){
+  var total=DATA.length;
+  var completed=DATA.filter(function(r){return r.status==='Completed';}).length;
+  var cancelled=DATA.filter(function(r){return r.status==='Cancelled';}).length;
+  var pending=DATA.filter(function(r){return r.status!=='Completed'&&r.status!=='Cancelled';}).length;
+  var totalCost=DATA.reduce(function(s,r){return s+r.cost;},0);
+  var direct=DATA.filter(function(r){return r.type==='Direct';}).length;
+  var third=DATA.filter(function(r){return r.type==='Third Party';}).length;
+  var issued=DATA.filter(function(r){return r.icrStatus==='Issued/Signed';}).length;
+  var notIssued=DATA.filter(function(r){return r.icrStatus==='Not Issued';}).length;
+
+  // Year groups
+  var years={};
+  DATA.forEach(function(r){
+    if(!r.year)return;
+    if(!years[r.year])years[r.year]={total:0,completed:0,cancelled:0,direct:0,third:0,issued:0,notIssued:0,cost:0,
+      cap:0,base:0,exist:0,casework:0,surplus:0};
+    var y=years[r.year];
+    y.total++;
+    if(r.status==='Completed')y.completed++;
+    if(r.status==='Cancelled')y.cancelled++;
+    if(r.type==='Direct')y.direct++;
+    if(r.type==='Third Party')y.third++;
+    if(r.icrStatus==='Issued/Signed')y.issued++;
+    if(r.icrStatus==='Not Issued')y.notIssued++;
+    y.cost+=r.cost;
+    var cat=r.category.toLowerCase();
+    if(cat.indexOf('capital')>=0)y.cap++;
+    else if(cat.indexOf('baseline')>=0)y.base++;
+    else if(cat.indexOf('exist')>=0)y.exist++;
+    else if(cat.indexOf('casework')>=0||cat.indexOf('case')>=0)y.casework++;
+    else if(cat.indexOf('surplus')>=0)y.surplus++;
+  });
+  var sortedYears=Object.keys(years).map(Number).sort();
+  var latestYear=sortedYears[sortedYears.length-1];
+
+  // Category groups
+  var cats={};
+  DATA.forEach(function(r){
+    var cat=r.category||'Unknown';
+    if(!cats[cat])cats[cat]={total:0,completed:0,direct:0,third:0,cost:0};
+    cats[cat].total++;
+    if(r.status==='Completed')cats[cat].completed++;
+    if(r.type==='Direct')cats[cat].direct++;
+    if(r.type==='Third Party')cats[cat].third++;
+    cats[cat].cost+=r.cost;
+  });
+  var sortedCats=Object.keys(cats).filter(function(c){return c&&c!=='nan';}).sort(function(a,b){return cats[b].total-cats[a].total;});
+
+  // Top requestors — all time
+  var reqMap={};
+  DATA.forEach(function(r){if(r.requestor){reqMap[r.requestor]=(reqMap[r.requestor]||0)+1;}});
+  var topReqs=Object.keys(reqMap).sort(function(a,b){return reqMap[b]-reqMap[a];}).slice(0,15);
+
+  // Top requestors — last 6 months (by dateCompleted)
+  var now6m=new Date();
+  var cutoff6m=new Date(now6m.getFullYear(),now6m.getMonth()-6,now6m.getDate());
+  var reqMap6m={};
+  var count6m=0;
+  DATA.forEach(function(r){
+    if(!r.dateCompleted||!r.requestor)return;
+    var d=new Date(r.dateCompleted);
+    if(isNaN(d.getTime())||d<cutoff6m)return;
+    reqMap6m[r.requestor]=(reqMap6m[r.requestor]||0)+1;
+    count6m++;
+  });
+  var topReqs6m=Object.keys(reqMap6m).sort(function(a,b){return reqMap6m[b]-reqMap6m[a];}).slice(0,15);
+
+  // Top technicians
+  var techMap={};
+  DATA.forEach(function(r){if(r.tech){techMap[r.tech]=(techMap[r.tech]||0)+1;}});
+  var topTechs=Object.keys(techMap).sort(function(a,b){return techMap[b]-techMap[a];}).slice(0,10);
+
+  /* ── HERO ── */
+  document.getElementById('hm-total').textContent=total.toLocaleString();
+  document.getElementById('hm-completed').textContent=completed.toLocaleString();
+  document.getElementById('hm-cost').textContent=fmtCostM(totalCost);
+  var minYear=sortedYears[0],maxYear=sortedYears[sortedYears.length-1];
+  document.getElementById('hero-sub').textContent='Program data from '+minYear+' to '+maxYear+' · Sheet: '+sheetName;
+
+  /* ── BADGES ── */
+  document.getElementById('badge-t1').textContent=total.toLocaleString();
+  document.getElementById('badge-t2').textContent=sortedYears.length+' yrs';
+  document.getElementById('badge-t3').textContent=sortedCats.length+' types';
+  document.getElementById('badge-t4').textContent=topReqs.length+' top';
+  document.getElementById('badge-t5').textContent=total.toLocaleString();
+
+  /* ── FOOTER ── */
+  var ft='Source: '+filename+'<br>Sheet: '+sheetName+'<br>Generated: '+new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})+'<br>Developed by: gootte';
+  ['t1','t2','t3','t4','t5'].forEach(function(id){document.getElementById('footer-'+id).innerHTML=ft;});
+
+  /* ══ TAB 1: OVERVIEW ══ */
+  // KPI row 1
+  var pctComplete=(completed/total*100).toFixed(1);
+  var pctDirect=total>0?(direct/total*100).toFixed(1):0;
+  document.getElementById('kpi-row1').innerHTML=
+    kc('','📋','Total Requests',total.toLocaleString(),'Since '+minYear)+
+    kc('blue','✅','Completed',completed.toLocaleString(),pctComplete+'% completion rate')+
+    kc('gold','💰','Total PO Cost',fmtCostM(totalCost),'Across all requests')+
+    kc('','📅','Years Active',sortedYears.length,minYear+' – '+maxYear);
+  var latestYrData=years[latestYear]||{};
+  document.getElementById('kpi-row2').innerHTML=
+    kc('','👷','Direct Installs',direct.toLocaleString(),pctDirect+'% of total')+
+    kc('blue','🤝','Third Party',third.toLocaleString(),(100-parseFloat(pctDirect)).toFixed(1)+'% of total')+
+    kc('gold','✍','ICR Issued/Signed',issued.toLocaleString(),(issued/total*100).toFixed(1)+'% of records')+
+    kc('red','⏳','Pending / Open',pending.toLocaleString(),'Requires follow-up');
+
+  // Annual chart
+  document.getElementById('annual-sub').textContent='Annual request volume and cumulative PO cost ('+minYear+'–'+latestYear+')';
+  mkChart('annualChart',{type:'bar',data:{labels:sortedYears,datasets:[
+    {label:'Requests',data:sortedYears.map(function(y){return years[y].total;}),backgroundColor:C_GREEN+'44',borderColor:C_GREEN,borderWidth:1,borderRadius:4,yAxisID:'y',order:2},
+    {label:'Completed',data:sortedYears.map(function(y){return years[y].completed;}),backgroundColor:C_BLUE+'44',borderColor:C_BLUE,borderWidth:1,borderRadius:4,yAxisID:'y',order:2},
+    {label:'PO Cost ($M)',data:sortedYears.map(function(y){return+(years[y].cost/1e6).toFixed(2);}),type:'line',borderColor:C_GOLD,backgroundColor:C_GOLD+'18',borderWidth:2,pointRadius:4,tension:0.35,fill:true,yAxisID:'y2',order:1}
+  ]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'top',labels:{boxWidth:10,font:{size:11}}}},scales:{y:{position:'left',title:{display:true,text:'Count',color:C_MUTED,font:{size:10}},ticks:{font:{size:10}}},y2:{position:'right',title:{display:true,text:'PO Cost ($M)',color:C_GOLD,font:{size:10}},ticks:{font:{size:10},callback:function(v){return'$'+v+'M';}},grid:{drawOnChartArea:false}},x:{grid:{display:false},ticks:{font:{size:10}}}}}});
+
+  // Direct vs 3rd party by year
+  mkChart('typeChart',{type:'bar',data:{labels:sortedYears,datasets:[
+    {label:'Direct',data:sortedYears.map(function(y){return years[y].direct;}),backgroundColor:C_GREEN+'88',borderRadius:3,stack:'a'},
+    {label:'Third Party',data:sortedYears.map(function(y){return years[y].third;}),backgroundColor:C_BLUE+'88',borderRadius:3,stack:'a'}
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{boxWidth:10,font:{size:11}}}},scales:{x:{stacked:true,grid:{display:false},ticks:{font:{size:10}}},y:{stacked:true,ticks:{font:{size:10}}}}}});
+
+  // ICR status
+  mkChart('icrStatusChart',{type:'bar',data:{labels:sortedYears,datasets:[
+    {label:'Issued/Signed',data:sortedYears.map(function(y){return years[y].issued;}),backgroundColor:C_GREEN+'88',borderRadius:3,stack:'a'},
+    {label:'Not Issued',data:sortedYears.map(function(y){return years[y].notIssued;}),backgroundColor:C_RED+'88',borderRadius:3,stack:'a'}
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{boxWidth:10,font:{size:11}}}},scales:{x:{stacked:true,grid:{display:false},ticks:{font:{size:10}}},y:{stacked:true,ticks:{font:{size:10}}}}}});
+
+  // Pending table
+  var prows=DATA.filter(function(r){return r.status!=='Completed'&&r.status!=='Cancelled';}).slice(0,20);
+  if(prows.length){
+    document.getElementById('pending-tbody').innerHTML=prows.map(function(r){
+      return '<tr class="pending-row"><td class="mono">'+r.sno+'</td><td class="mono">'+r.year+'</td><td class="mono" style="font-size:10px">'+r.reqno+'</td><td>'+r.requestor+'</td><td style="text-align:left;max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+r.desc+'">'+r.desc+'</td><td>'+statusBadge(r.type,'type')+'</td><td>'+statusBadge(r.status,'status')+'</td></tr>';
+    }).join('');
+  } else {
+    document.getElementById('pending-tbody').innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--accent);padding:24px">✅ No pending requests found</td></tr>';
+  }
+
+  // Annual table
+  document.getElementById('annual-tbody').innerHTML=sortedYears.map(function(y){
+    var d=years[y];
+    var compRate=d.total>0?Math.round(d.completed/d.total*100)+'%':'—';
+    return '<tr><td>'+y+'</td><td>'+d.total+'</td><td class="hi">'+d.completed+' <span style="font-size:10px;color:var(--muted)">('+compRate+')</span></td><td class="hi-gold">'+d.cancelled+'</td><td>'+d.direct+'</td><td class="hi-blue">'+d.third+'</td><td class="hi">'+d.issued+'</td><td style="color:var(--red)">'+d.notIssued+'</td><td class="mono hi-gold">'+fmtCost(d.cost)+'</td></tr>';
+  }).join('')+'<tr class="tot"><td>TOTAL</td><td>'+total+'</td><td>'+completed+'</td><td>'+cancelled+'</td><td>'+direct+'</td><td>'+third+'</td><td>'+issued+'</td><td>'+notIssued+'</td><td class="mono">'+fmtCost(totalCost)+'</td></tr>';
+
+  // Findings
+  var peakYear=sortedYears.reduce(function(a,b){return years[b].total>years[a].total?b:a;});
+  var peakCostYear=sortedYears.reduce(function(a,b){return years[b].cost>years[a].cost?b:a;});
+  var avgPerYear=(total/sortedYears.length).toFixed(0);
+  document.getElementById('findings').innerHTML=
+    fc('01','green',completed.toLocaleString()+' requests completed','<strong>'+pctComplete+'%</strong> overall completion rate across the full program life. '+cancelled+' requests cancelled.')+
+    fc('02','blue','Direct vs Third Party','<strong>'+pctDirect+'%</strong> of all requests handled directly by FMOM. Third party vendors handled <strong>'+third.toLocaleString()+'</strong> jobs.')+
+    fc('03','gold',fmtCostM(totalCost)+' total PO value','Peak cost year was <strong>'+peakCostYear+'</strong> ('+fmtCostM(years[peakCostYear].cost)+'). Average cost per request with PO: '+fmtCost(totalCost/completed)+'.')+
+    fc('04','purple',peakYear+' was the busiest year','<strong>'+years[peakYear].total.toLocaleString()+'</strong> requests in '+peakYear+'. Average of <strong>'+avgPerYear+'</strong> requests per year over '+sortedYears.length+' years.')+
+    fc('05','red',issued.toLocaleString()+' ICRs Issued/Signed','<strong>'+(issued/total*100).toFixed(1)+'%</strong> signing rate. <strong>'+notIssued+'</strong> ICRs still not issued, requiring attention.')+
+    fc('06','blue',latestYear+' YTD: '+latestYrData.total+' requests',latestYrData.completed+' completed, '+( latestYrData.total-(latestYrData.completed||0)-(latestYrData.cancelled||0))+' pending. PO value: '+fmtCostM(latestYrData.cost)+'.');
+
+  /* ══ TAB 2: TRENDS ══ */
+  // Sparklines
+  var last2yrs=sortedYears.slice(-2);
+  var curr=last2yrs[1]?years[last2yrs[1]]:null;
+  var prev=last2yrs[0]?years[last2yrs[0]]:null;
+  var chg=curr&&prev&&prev.total>0?Math.round((curr.total-prev.total)/prev.total*100):null;
+  document.getElementById('sparks-t2').innerHTML=
+    spark('TOTAL REQUESTS',total.toLocaleString(),'neu',minYear+'–'+latestYear)+
+    spark(latestYear+' YTD',(curr?curr.total:0),'neu',chg!==null?(chg>=0?'↑ '+chg+'% vs '+(latestYear-1):'↓ '+Math.abs(chg)+'% vs '+(latestYear-1)):'Current year',(chg!==null?(chg>=0?'up':'dn'):'neu'))+
+    spark('COMPLETION RATE',pctComplete+'%','up','All-time average')+
+    spark('YRS WITH DATA',sortedYears.length,'neu',minYear+' to '+latestYear);
+
+  // Avg cost per year
+  var avgCostPerYear=sortedYears.map(function(y){
+    var d=years[y];
+    var withCost=DATA.filter(function(r){return r.year===y&&r.cost>0;}).length;
+    return withCost>0?+(d.cost/withCost).toFixed(0):0;
+  });
+  mkChart('avgCostChart',{type:'bar',data:{labels:sortedYears,datasets:[
+    {label:'Avg PO Cost',data:avgCostPerYear,backgroundColor:C_GOLD+'66',borderColor:C_GOLD,borderWidth:1,borderRadius:4}
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{ticks:{font:{size:10},callback:function(v){return'$'+v.toLocaleString();}}},x:{grid:{display:false},ticks:{font:{size:10}}}}}});
+
+  // ── Trends: Direct vs Third Party historical ──
+  mkChart('trendTypeCountChart',{type:'bar',data:{labels:sortedYears,datasets:[
+    {label:'Direct',data:sortedYears.map(function(y){return years[y].direct;}),backgroundColor:C_GREEN+'88',borderRadius:3,stack:'s'},
+    {label:'Third Party',data:sortedYears.map(function(y){return years[y].third;}),backgroundColor:C_BLUE+'88',borderRadius:3,stack:'s'}
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{boxWidth:10,font:{size:11}}}},scales:{x:{stacked:true,grid:{display:false},ticks:{font:{size:10}}},y:{stacked:true,ticks:{font:{size:10}}}}}});
+
+  mkChart('trendTypePctChart',{type:'line',data:{labels:sortedYears,datasets:[
+    {label:'% Direct',data:sortedYears.map(function(y){var d=years[y];return d.total>0?+(d.direct/d.total*100).toFixed(1):0;}),borderColor:C_GREEN,backgroundColor:C_GREEN+'22',borderWidth:2,pointRadius:4,tension:0.35,fill:true},
+    {label:'% Third Party',data:sortedYears.map(function(y){var d=years[y];return d.total>0?+(d.third/d.total*100).toFixed(1):0;}),borderColor:C_BLUE,backgroundColor:C_BLUE+'11',borderWidth:2,pointRadius:4,tension:0.35}
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{boxWidth:10,font:{size:11}}}},scales:{y:{min:0,max:100,ticks:{font:{size:10},callback:function(v){return v+'%';}}},x:{grid:{display:false},ticks:{font:{size:10}}}}}});
+
+  // ── Trends: Category counts by year ──
+  // Build per-year category counts
+  var catYearCounts={Capital:{},Baseline:{},Existing:{},Casework:{}};
+  DATA.forEach(function(r){
+    if(!r.year)return;
+    var cat=(r.category||'').toLowerCase();
+    if(cat.indexOf('capital')>=0)catYearCounts.Capital[r.year]=(catYearCounts.Capital[r.year]||0)+1;
+    else if(cat.indexOf('baseline')>=0)catYearCounts.Baseline[r.year]=(catYearCounts.Baseline[r.year]||0)+1;
+    else if(cat.indexOf('exist')>=0)catYearCounts.Existing[r.year]=(catYearCounts.Existing[r.year]||0)+1;
+    else if(cat.indexOf('casework')>=0||cat.indexOf('case')>=0)catYearCounts.Casework[r.year]=(catYearCounts.Casework[r.year]||0)+1;
+  });
+
+  mkChart('trendCatCountChart',{type:'bar',data:{labels:sortedYears,datasets:[
+    {label:'Capital',data:sortedYears.map(function(y){return catYearCounts.Capital[y]||0;}),backgroundColor:C_GOLD+'88',borderRadius:3,stack:'c'},
+    {label:'Baseline',data:sortedYears.map(function(y){return catYearCounts.Baseline[y]||0;}),backgroundColor:C_BLUE+'88',borderRadius:3,stack:'c'},
+    {label:'Existing',data:sortedYears.map(function(y){return catYearCounts.Existing[y]||0;}),backgroundColor:C_GREEN+'88',borderRadius:3,stack:'c'},
+    {label:'Casework',data:sortedYears.map(function(y){return catYearCounts.Casework[y]||0;}),backgroundColor:C_PURPLE+'88',borderRadius:3,stack:'c'}
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{boxWidth:10,font:{size:11}}}},scales:{x:{stacked:true,grid:{display:false},ticks:{font:{size:10}}},y:{stacked:true,ticks:{font:{size:10}}}}}});
+
+  mkChart('trendCatPctChart',{type:'line',data:{labels:sortedYears,datasets:[
+    {label:'Capital',data:sortedYears.map(function(y){var t=years[y].total||1;return+((catYearCounts.Capital[y]||0)/t*100).toFixed(1);}),borderColor:C_GOLD,backgroundColor:C_GOLD+'15',borderWidth:2,pointRadius:3,tension:0.35,fill:false},
+    {label:'Baseline',data:sortedYears.map(function(y){var t=years[y].total||1;return+((catYearCounts.Baseline[y]||0)/t*100).toFixed(1);}),borderColor:C_BLUE,backgroundColor:C_BLUE+'15',borderWidth:2,pointRadius:3,tension:0.35,fill:false},
+    {label:'Existing',data:sortedYears.map(function(y){var t=years[y].total||1;return+((catYearCounts.Existing[y]||0)/t*100).toFixed(1);}),borderColor:C_GREEN,backgroundColor:C_GREEN+'15',borderWidth:2,pointRadius:3,tension:0.35,fill:false},
+    {label:'Casework',data:sortedYears.map(function(y){var t=years[y].total||1;return+((catYearCounts.Casework[y]||0)/t*100).toFixed(1);}),borderColor:C_PURPLE,backgroundColor:C_PURPLE+'15',borderWidth:2,pointRadius:3,tension:0.35,fill:false}
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{boxWidth:10,font:{size:11}}}},scales:{y:{min:0,ticks:{font:{size:10},callback:function(v){return v+'%';}}},x:{grid:{display:false},ticks:{font:{size:10}}}}}});
+
+  /* ══ TAB 3: CATEGORIES ══ */
+  document.getElementById('kpi-cat').innerHTML=
+    sortedCats.slice(0,4).map(function(cat,i){
+      var d=cats[cat];
+      var colors=['gold','blue','','purple'];
+      var rate=d.total>0?(d.completed/d.total*100).toFixed(0)+'%':'—';
+      return kc(colors[i]||'','',cat,d.total.toLocaleString(),'Completion: '+rate+' · Cost: '+fmtCostM(d.cost));
+    }).join('');
+
+  var catColors=sortedCats.map(function(c){return CAT_COLORS[c]||C_MUTED;});
+  mkChart('catChart',{type:'doughnut',data:{labels:sortedCats,datasets:[{data:sortedCats.map(function(c){return cats[c].total;}),backgroundColor:catColors.map(function(c){return c+'CC';}),borderColor:catColors,borderWidth:2,hoverOffset:6}]},options:{responsive:true,maintainAspectRatio:false,cutout:'65%',plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){var p=(ctx.raw/total*100).toFixed(1);return ' '+ctx.label+': '+ctx.raw+' ('+p+'%)';}}}}}})
+
+  // Category legend
+  var maxCat=sortedCats.length>0?cats[sortedCats[0]].total:1;
+  document.getElementById('cat-legend').innerHTML=sortedCats.map(function(c){
+    var d=cats[c],col=CAT_COLORS[c]||C_MUTED,pct=(d.total/total*100).toFixed(1);
+    return '<div class="li"><div class="ld" style="background:'+col+'"></div><span class="ll">'+c+'</span><div style="flex:1;margin:0 8px;height:4px;background:var(--surface3);border-radius:2px"><div style="height:4px;border-radius:2px;background:'+col+';width:'+(d.total/maxCat*100).toFixed(0)+'%"></div></div><span class="lv">'+d.total+'</span></div>';
+  }).join('');
+
+  // Cat by year stacked
+  mkChart('catYearChart',{type:'bar',data:{labels:sortedYears,datasets:[
+    {label:'Capital',data:sortedYears.map(function(y){return years[y].cap;}),backgroundColor:C_GOLD+'99',stack:'a',borderRadius:2},
+    {label:'Baseline',data:sortedYears.map(function(y){return years[y].base;}),backgroundColor:C_BLUE+'99',stack:'a',borderRadius:2},
+    {label:'Existing',data:sortedYears.map(function(y){return years[y].exist;}),backgroundColor:C_GREEN+'99',stack:'a',borderRadius:2},
+    {label:'Casework',data:sortedYears.map(function(y){return years[y].casework;}),backgroundColor:C_PURPLE+'99',stack:'a',borderRadius:2},
+    {label:'Surplus',data:sortedYears.map(function(y){return years[y].surplus;}),backgroundColor:C_RED+'99',stack:'a',borderRadius:2}
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{boxWidth:10,font:{size:11}}}},scales:{x:{stacked:true,grid:{display:false},ticks:{font:{size:10}}},y:{stacked:true,ticks:{font:{size:10}}}}}});
+
+  // Cat table
+  document.getElementById('cat-tbody').innerHTML=sortedCats.map(function(cat){
+    var d=cats[cat];
+    var pct=(d.total/total*100).toFixed(1);
+    var compRate=d.total>0?(d.completed/d.total*100).toFixed(0)+'%':'—';
+    var avgCost=d.total>0?fmtCost(d.cost/d.total):'—';
+    return '<tr><td style="color:'+(CAT_COLORS[cat]||C_MUTED)+'">'+cat+'</td><td>'+d.total+'</td><td>'+pct+'%</td><td class="hi">'+d.completed+'</td><td>'+d.direct+'</td><td class="hi-blue">'+d.third+'</td><td class="mono hi-gold">'+fmtCost(d.cost)+'</td><td class="mono">'+avgCost+'</td></tr>';
+  }).join('')+'<tr class="tot"><td>TOTAL</td><td>'+total+'</td><td>100%</td><td>'+completed+'</td><td>'+direct+'</td><td>'+third+'</td><td class="mono">'+fmtCost(totalCost)+'</td><td class="mono">'+fmtCost(totalCost/completed)+'</td></tr>';
+
+  /* ══ TAB 4: REQUESTORS & TECHS ══ */
+  var maxReq=reqMap[topReqs[0]]||1;
+  document.getElementById('top-requestors').innerHTML=topReqs.map(function(r,i){
+    var n=reqMap[r];
+    return '<li class="top-item"><span class="top-rank">'+(i+1)+'</span><span class="top-name">'+r+'</span><div class="top-bar-wrap"><div class="top-bar" style="width:'+(n/maxReq*100).toFixed(0)+'%"></div></div><span class="top-count">'+n+'</span></li>';
+  }).join('');
+
+  mkChart('reqChart',{type:'bar',data:{labels:topReqs.slice(0,10),datasets:[
+    {label:'Requests',data:topReqs.slice(0,10).map(function(r){return reqMap[r];}),backgroundColor:C_PURPLE+'77',borderColor:C_PURPLE,borderWidth:1,borderRadius:4}
+  ]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{font:{size:10}}},y:{ticks:{font:{size:9}}}}}});
+
+  // Last 6 months requestors
+  var cutoffLabel=cutoff6m.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
+  var latestLabel=now6m.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
+  document.getElementById('req6m-sub').textContent=cutoffLabel+' – '+latestLabel+' ('+count6m+' completed requests)';
+  document.getElementById('req6m-chart-sub').textContent='By completion date · '+count6m+' total in period';
+
+  if(topReqs6m.length){
+    var maxReq6m=reqMap6m[topReqs6m[0]]||1;
+    document.getElementById('top-requestors-6m').innerHTML=topReqs6m.map(function(r,i){
+      var n=reqMap6m[r];
+      var allTimeN=reqMap[r]||0;
+      var pctOfAll=allTimeN>0?Math.round(n/allTimeN*100)+'% of all-time':'new';
+      return '<li class="top-item"><span class="top-rank">'+(i+1)+'</span><span class="top-name" title="All-time: '+allTimeN+'">'+r+'</span><div class="top-bar-wrap"><div class="top-bar" style="width:'+(n/maxReq6m*100).toFixed(0)+'%;background:'+C_PURPLE+'"></div></div><span class="top-count" style="color:'+C_PURPLE+'">'+n+'</span></li>';
+    }).join('');
+    mkChart('reqChart6m',{type:'bar',data:{labels:topReqs6m.slice(0,10),datasets:[
+      {label:'Completions',data:topReqs6m.slice(0,10).map(function(r){return reqMap6m[r];}),backgroundColor:C_PURPLE+'55',borderColor:C_PURPLE,borderWidth:1,borderRadius:4},
+      {label:'All-time',data:topReqs6m.slice(0,10).map(function(r){return reqMap[r]||0;}),backgroundColor:C_MUTED+'33',borderColor:C_MUTED,borderWidth:1,borderRadius:4}
+    ]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{boxWidth:10,font:{size:10}}}},scales:{x:{ticks:{font:{size:10}}},y:{ticks:{font:{size:9}}}}}});
+  } else {
+    document.getElementById('top-requestors-6m').innerHTML='<li style="padding:16px;color:var(--muted);font-size:12px">No completed requests found in the last 6 months.</li>';
+  }
+
+  var maxTech=techMap[topTechs[0]]||1;
+  document.getElementById('top-techs').innerHTML=topTechs.map(function(t,i){
+    var n=techMap[t];
+    return '<li class="top-item"><span class="top-rank">'+(i+1)+'</span><span class="top-name">'+t+'</span><div class="top-bar-wrap"><div class="top-bar" style="width:'+(n/maxTech*100).toFixed(0)+'%;background:'+C_BLUE+'"></div></div><span class="top-count" style="color:'+C_BLUE+'">'+n+'</span></li>';
+  }).join('');
+
+  mkChart('techDonut',{type:'doughnut',data:{labels:topTechs,datasets:[{data:topTechs.map(function(t){return techMap[t];}),backgroundColor:[C_BLUE,C_GREEN,C_GOLD,C_PURPLE,C_RED,C_TEAL,'#FF9500','#FF2D55','#5AC8FA','#4CD964'].map(function(c){return c+'CC';}),borderColor:'#21262D',borderWidth:2,hoverOffset:5}]},options:{responsive:true,maintainAspectRatio:false,cutout:'60%',plugins:{legend:{position:'right',labels:{font:{size:10},boxWidth:10}},tooltip:{callbacks:{label:function(ctx){var tot2=topTechs.reduce(function(s,t){return s+techMap[t];},0);return ' '+ctx.label+': '+ctx.raw+' ('+(ctx.raw/tot2*100).toFixed(1)+'%)';}}}}}}); 
+
+  mkChart('typeDonut',{type:'doughnut',data:{labels:['Direct','Third Party','Unknown'],datasets:[{data:[direct,third,total-direct-third],backgroundColor:[C_GREEN+'CC',C_BLUE+'CC',C_MUTED+'CC'],borderColor:'#21262D',borderWidth:2,hoverOffset:5}]},options:{responsive:true,maintainAspectRatio:false,cutout:'65%',plugins:{legend:{position:'bottom',labels:{font:{size:11},boxWidth:10}},tooltip:{callbacks:{label:function(ctx){return ' '+ctx.label+': '+ctx.raw+' ('+(ctx.raw/total*100).toFixed(1)+'%)';}}}}}}); 
+
+  // Type trend
+  mkChart('typeTrendChart',{type:'line',data:{labels:sortedYears,datasets:[
+    {label:'% Direct',data:sortedYears.map(function(y){var d=years[y];return d.total>0?+(d.direct/d.total*100).toFixed(1):0;}),borderColor:C_GREEN,backgroundColor:C_GREEN+'22',borderWidth:2,pointRadius:3,tension:0.35,fill:true},
+    {label:'% 3rd Party',data:sortedYears.map(function(y){var d=years[y];return d.total>0?+(d.third/d.total*100).toFixed(1):0;}),borderColor:C_BLUE,backgroundColor:C_BLUE+'11',borderWidth:2,pointRadius:3,tension:0.35}
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{boxWidth:10,font:{size:10}}}},scales:{y:{min:0,max:100,ticks:{font:{size:9},callback:function(v){return v+'%';}}},x:{grid:{display:false},ticks:{font:{size:9}}}}}}); 
+
+  document.getElementById('type-legend').innerHTML=
+    '<div class="li"><div class="ld" style="background:'+C_GREEN+'"></div><span class="ll">Direct</span><span class="lv">'+direct+' ('+pctDirect+'%)</span></div>'+
+    '<div class="li"><div class="ld" style="background:'+C_BLUE+'"></div><span class="ll">Third Party</span><span class="lv">'+third+' ('+(100-parseFloat(pctDirect)).toFixed(1)+'%)</span></div>'+
+    '<div style="margin-top:16px"><div class="spl">DIRECT COST</div><div class="spv">'+fmtCostM(DATA.filter(function(r){return r.type==='Direct';}).reduce(function(s,r){return s+r.cost;},0))+'</div></div>'+
+    '<div style="margin-top:10px"><div class="spl">THIRD PARTY COST</div><div class="spv">'+fmtCostM(DATA.filter(function(r){return r.type==='Third Party';}).reduce(function(s,r){return s+r.cost;},0))+'</div></div>';
+
+  /* ══ TAB 5: DATA EXPLORER ══ */
+  // Populate filters
+  var yearOpts=sortedYears.slice().reverse().map(function(y){return '<option value="'+y+'">'+y+'</option>';}).join('');
+  document.getElementById('f-year').innerHTML='<option value="">All Years</option>'+yearOpts;
+
+  // Populate Date Completed year filter
+  var dcYears=[...new Set(DATA.map(function(r){
+    return r.dateCompleted?parseInt(r.dateCompleted.substring(0,4)):null;
+  }).filter(Boolean))].sort(function(a,b){return b-a;});
+  document.getElementById('f-dc-year').innerHTML='<option value="">All Years</option>'+dcYears.map(function(y){return'<option value="'+y+'">'+y+'</option>';}).join('');
+
+  var statuses=[...new Set(DATA.map(function(r){return r.status;}).filter(Boolean))].sort();
+  document.getElementById('f-status').innerHTML='<option value="">All Statuses</option>'+statuses.map(function(s){return'<option>'+s+'</option>';}).join('');
+
+  var types=['Direct','Third Party','Unknown'];
+  document.getElementById('f-type').innerHTML='<option value="">All Types</option>'+types.map(function(t){return'<option>'+t+'</option>';}).join('');
+
+  document.getElementById('f-cat').innerHTML='<option value="">All Categories</option>'+sortedCats.map(function(c){return'<option>'+c+'</option>';}).join('');
+
+  var icrStatuses=[...new Set(DATA.map(function(r){return r.icrStatus;}).filter(Boolean))].sort();
+  document.getElementById('f-icr').innerHTML='<option value="">All ICR Status</option>'+icrStatuses.map(function(s){return'<option>'+s+'</option>';}).join('');
+
+  deApply();
+}
+
+/* ════════ DATA EXPLORER ════════ */
+var deSortCol='sno',deSortDir=1,deCurPage=1,dePageSize=25,deFiltered=[];
+
+function deApply(){
+  var yr=document.getElementById('f-year').value;
+  var mo=document.getElementById('f-month').value;
+  var dy=document.getElementById('f-day').value;
+  var st=document.getElementById('f-status').value;
+  var tp=document.getElementById('f-type').value;
+  var ct=document.getElementById('f-cat').value;
+  var icr=document.getElementById('f-icr').value;
+  var q=(document.getElementById('f-search').value||'').toLowerCase().trim();
+  var dcYr=document.getElementById('f-dc-year').value;
+  var dcMo=document.getElementById('f-dc-month').value;
+  var dcDy=document.getElementById('f-dc-day').value;
+
+  deFiltered=DE_ALL.filter(function(r){
+    if(yr&&String(r.year)!==yr)return false;
+    if(mo&&r.date){var rm=parseInt(r.date.substring(5,7));if(String(rm)!==mo)return false;}
+    else if(mo&&!r.date)return false;
+    if(dy&&r.date){var rd=parseInt(r.date.substring(8,10));if(String(rd)!==String(parseInt(dy)))return false;}
+    else if(dy&&!r.date)return false;
+    if(st&&r.status!==st)return false;
+    if(tp&&r.type!==tp)return false;
+    if(ct&&r.category!==ct)return false;
+    if(icr&&r.icrStatus!==icr)return false;
+    if(dcYr&&r.dateCompleted){var dcY=r.dateCompleted.substring(0,4);if(dcY!==dcYr)return false;}
+    else if(dcYr&&!r.dateCompleted)return false;
+    if(dcMo&&r.dateCompleted){var dcM=parseInt(r.dateCompleted.substring(5,7));if(String(dcM)!==dcMo)return false;}
+    else if(dcMo&&!r.dateCompleted)return false;
+    if(dcDy&&r.dateCompleted){var dcD=parseInt(r.dateCompleted.substring(8,10));if(String(dcD)!==String(parseInt(dcDy)))return false;}
+    else if(dcDy&&!r.dateCompleted)return false;
+    if(q&&!(r.desc.toLowerCase().indexOf(q)>=0||r.requestor.toLowerCase().indexOf(q)>=0||r.reqno.toLowerCase().indexOf(q)>=0))return false;
+    return true;
+  });
+  deFiltered.sort(function(a,b){
+    var av=a[deSortCol]||'',bv=b[deSortCol]||'';
+    return av<bv?-deSortDir:av>bv?deSortDir:0;
+  });
+  deCurPage=1;deRender();
+}
+
+function deReset(){
+  document.getElementById('f-year').value='';
+  document.getElementById('f-month').value='';
+  document.getElementById('f-day').value='';
+  document.getElementById('f-status').value='';
+  document.getElementById('f-type').value='';
+  document.getElementById('f-cat').value='';
+  document.getElementById('f-icr').value='';
+  document.getElementById('f-search').value='';
+  document.getElementById('f-dc-year').value='';
+  document.getElementById('f-dc-month').value='';
+  document.getElementById('f-dc-day').value='';
+  deSortCol='sno';deSortDir=1;
+  document.querySelectorAll('#de-tbl thead th').forEach(function(th){th.className='';});
+  deApply();
+}
+
+function deSort(col){
+  deSortDir=deSortCol===col?-deSortDir:1;
+  deSortCol=col;
+  var colNames=['sno','year','requestor','desc','type','status','icrstatus','icrNo','category','cost','tech'];
+  document.querySelectorAll('#de-tbl thead th').forEach(function(th,i){th.className=colNames[i]===col?(deSortDir===1?'asc':'desc'):'';});
+  deApply();
+}
+
+function dePage(dir){
+  var max=Math.ceil(deFiltered.length/dePageSize)||1;
+  deCurPage=Math.max(1,Math.min(max,deCurPage+dir));
+  deRender();
+}
+
+function deRender(){
+  var start=(deCurPage-1)*dePageSize;
+  var slice=deFiltered.slice(start,start+dePageSize);
+  var max=Math.max(1,Math.ceil(deFiltered.length/dePageSize));
+  var totCost=deFiltered.reduce(function(s,r){return s+r.cost;},0);
+  var totCompleted=deFiltered.filter(function(r){return r.status==='Completed';}).length;
+  var totNumICR=deFiltered.reduce(function(s,r){return s+(r.numICR||0);},0);
+
+  var catPillNames=['Capital','Baseline','Existing','Casework','Surplus','Non Academic'];
+  var catPillColors={Capital:C_GOLD,Baseline:C_BLUE,Existing:C_GREEN,Casework:C_PURPLE,Surplus:C_RED,'Non Academic':C_MUTED};
+  var catPillCounts={};var catPillCosts={};
+  catPillNames.forEach(function(c){catPillCounts[c]=0;catPillCosts[c]=0;});
+  deFiltered.forEach(function(r){
+    catPillNames.forEach(function(c){
+      if(r.category&&r.category.toLowerCase().indexOf(c.toLowerCase())>=0){catPillCounts[c]++;catPillCosts[c]+=r.cost;}
+    });
+  });
+  var totalCostAllCats=catPillNames.reduce(function(s,c){return s+catPillCosts[c];},0);
+  document.getElementById('de-pills').innerHTML=
+    '<div class="de-pill">Rows <b>'+deFiltered.length+'</b></div>'+
+    '<div class="de-pill">Completed <b>'+totCompleted+'</b></div>'+
+    '<div class="de-pill">Number of ICR <b>'+totNumICR+'</b></div>'+
+    catPillNames.map(function(c){
+      var col=catPillColors[c]||C_MUTED;
+      var showCost=(c==='Capital'||c==='Baseline');
+      var val=showCost?catPillCounts[c]+' · '+fmtCostM(catPillCosts[c]):catPillCounts[c];
+      return '<div class="de-pill" style="border-color:'+col+'44;background:'+col+'11"><span style="display:inline-block;width:7px;height:7px;border-radius:2px;background:'+col+';margin-right:4px;vertical-align:middle"></span>'+c+' <b>'+val+'</b></div>';
+    }).join('')+
+    '<div class="de-pill" style="border-color:#2DA44E44;background:#2DA44E11;font-weight:600"><span style="display:inline-block;width:7px;height:7px;border-radius:2px;background:#2DA44E;margin-right:4px;vertical-align:middle"></span>Total Cost <b>'+fmtCostM(totalCostAllCats)+'</b></div>'+
+    '<div class="de-pill">Direct <b>'+deFiltered.filter(function(r){return r.type==='Direct';}).length+'</b></div>'+
+    '<div class="de-pill">3rd Party <b>'+deFiltered.filter(function(r){return r.type==='Third Party';}).length+'</b></div>';
+
+  var body=document.getElementById('de-body');
+  if(!slice.length){
+    body.innerHTML='<tr><td colspan="11" class="de-empty">No records match the filters.</td></tr>';
+  } else {
+    body.innerHTML=slice.map(function(r){
+      return '<tr>'+
+        '<td class="mono">'+r.sno+'</td>'+
+        '<td>'+r.year+'</td>'+
+        '<td style="text-align:left;max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+r.requestor+'">'+r.requestor+'</td>'+
+        '<td style="text-align:left;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+r.desc+'">'+r.desc+'</td>'+
+        '<td>'+statusBadge(r.type,'type')+'</td>'+
+        '<td>'+statusBadge(r.status,'status')+'</td>'+
+        '<td>'+statusBadge(r.icrStatus,'icr')+'</td>'+
+        '<td class="mono" style="text-align:left;font-size:10px">'+(r.icrNo||'—')+'</td>'+
+        '<td style="text-align:left">'+r.category+'</td>'+
+        '<td class="mono">'+(r.cost?fmtCost(r.cost):'—')+'</td>'+
+        '<td style="text-align:left;font-size:10px">'+r.tech+'</td>'+
+        '</tr>';
+    }).join('');
+  }
+
+  document.getElementById('de-info').textContent='Page '+deCurPage+' of '+max+' ('+deFiltered.length+' records)';
+  document.getElementById('de-prev').disabled=deCurPage<=1;
+  document.getElementById('de-next').disabled=deCurPage>=max;
+
+  // Mini charts
+  var catBuckets={};
+  var capCostByYear={};var baseCostByYear={};
+  var deYears=[];
+  deFiltered.forEach(function(r){
+    catBuckets[r.category]=(catBuckets[r.category]||0)+1;
+    if(r.year){
+      if(deYears.indexOf(r.year)<0)deYears.push(r.year);
+      var cat=(r.category||'').toLowerCase();
+      if(!capCostByYear[r.year])capCostByYear[r.year]=0;
+      if(!baseCostByYear[r.year])baseCostByYear[r.year]=0;
+      if(cat.indexOf('capital')>=0)capCostByYear[r.year]+=r.cost;
+      else if(cat.indexOf('baseline')>=0)baseCostByYear[r.year]+=r.cost;
+    }
+  });
+  deYears.sort();
+  var cKeys=Object.keys(catBuckets).filter(function(c){return c&&c!=='nan';}).sort(function(a,b){return catBuckets[b]-catBuckets[a];});
+  document.getElementById('de-cost-sub').textContent='Filtered: '+deFiltered.length+' records';
+  mkChart('deCapBaseChart',{type:'bar',data:{labels:deYears,datasets:[
+    {label:'Capital',data:deYears.map(function(y){return+((capCostByYear[y]||0)/1000).toFixed(1);}),backgroundColor:C_GOLD+'88',borderColor:C_GOLD,borderWidth:1,borderRadius:3,stack:'a'},
+    {label:'Baseline',data:deYears.map(function(y){return+((baseCostByYear[y]||0)/1000).toFixed(1);}),backgroundColor:C_BLUE+'88',borderColor:C_BLUE,borderWidth:1,borderRadius:3,stack:'a'}
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{boxWidth:8,font:{size:9}}}},scales:{x:{stacked:true,grid:{display:false},ticks:{font:{size:9}}},y:{stacked:true,ticks:{font:{size:9},callback:function(v){return'$'+v+'k';}}}}}}); 
+  mkChart('deCatChart',{type:'doughnut',data:{labels:cKeys,datasets:[{data:cKeys.map(function(c){return catBuckets[c];}),backgroundColor:cKeys.map(function(c){return (CAT_COLORS[c]||C_MUTED)+'CC';}),borderColor:'#F5F7FA',borderWidth:2,hoverOffset:4}]},options:{responsive:true,maintainAspectRatio:false,cutout:'60%',plugins:{legend:{position:'right',labels:{font:{size:9},boxWidth:8}}}}}); 
+  var deDir=deFiltered.filter(function(r){return r.type==='Direct';}).length;
+  var de3p=deFiltered.filter(function(r){return r.type==='Third Party';}).length;
+  var deUnk=deFiltered.length-deDir-de3p;
+  mkChart('deTypeChart',{type:'doughnut',data:{labels:['Direct','Third Party','Unknown'],datasets:[{data:[deDir,de3p,deUnk],backgroundColor:[C_GREEN+'CC',C_BLUE+'CC',C_MUTED+'44'],borderColor:'#F5F7FA',borderWidth:2,hoverOffset:4}]},options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{position:'bottom',labels:{font:{size:9},boxWidth:8}},tooltip:{callbacks:{label:function(ctx){var t=deDir+de3p+deUnk;return ' '+ctx.label+': '+ctx.raw+' ('+(t>0?(ctx.raw/t*100).toFixed(1):0)+'%)';}}}}}}); 
+}
+
+/* ════════ UI HELPERS ════════ */
+function kc(color,icon,label,value,sub){
+  return '<div class="kc '+(color||'')+'"><span class="ki">'+icon+'</span><div class="kv">'+value+'</div><div class="kl">'+label+'</div><div class="ks">'+sub+'</div></div>';
+}
+function fc(num,color,title,desc){
+  return '<div class="fc '+(color||'')+'"><div class="fn">'+num+'</div><div class="ft"><strong>'+title+'</strong><br>'+desc+'</div></div>';
+}
+function spark(label,value,dir,sub){
+  return '<div class="spc"><div class="spl">'+label+'</div><div class="spv">'+value+'</div><div class="spt '+(dir||'neu')+'">'+sub+'</div></div>';
+}
+function statusBadge(val,type){
+  if(!val)return '<span class="badge badge-gray">—</span>';
+  if(type==='status'){
+    if(val==='Completed')return '<span class="badge badge-green">'+val+'</span>';
+    if(val==='Cancelled')return '<span class="badge badge-red">'+val+'</span>';
+    if(val==='Pending')return '<span class="badge badge-yellow">'+val+'</span>';
+    return '<span class="badge badge-gray">'+val+'</span>';
+  }
+  if(type==='type'){
+    if(val==='Direct')return '<span class="badge badge-green">'+val+'</span>';
+    if(val==='Third Party')return '<span class="badge badge-blue">'+val+'</span>';
+    return '<span class="badge badge-gray">'+val+'</span>';
+  }
+  if(type==='icr'){
+    if(val==='Issued/Signed')return '<span class="badge badge-green">'+val+'</span>';
+    if(val==='Not Issued')return '<span class="badge badge-yellow">'+val+'</span>';
+    return '<span class="badge badge-gray">'+val+'</span>';
+  }
+  return '<span class="badge badge-gray">'+val+'</span>';
+}
+</script>
+</body>
+</html>
