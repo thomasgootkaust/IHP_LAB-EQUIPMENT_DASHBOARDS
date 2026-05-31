@@ -1,0 +1,1577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>IHP Project Progress Tracking Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#F4F6F9;--surface:#FFFFFF;--surface2:#EEF1F5;--surface3:#DDE2EA;
+  --accent:#1B6CA8;--accent2:#27A85F;--gold:#D4820A;--red:#C0392B;
+  --teal:#16A085;--purple:#7B55C0;--orange:#C0692A;
+  --text:#1C2333;--muted:#5A6478;--border:#D0D7E3;--card:#FFFFFF;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:'Raleway',sans-serif;background:var(--bg);color:var(--text);line-height:1.6;overflow-x:hidden;font-size:14px}
+
+/* ─── DROP SCREEN ─── */
+#drop-screen{position:fixed;inset:0;z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg)}
+.drop-wrap{text-align:center;max-width:600px;width:92%}
+.drop-logo{font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.35em;text-transform:uppercase;color:var(--accent);margin-bottom:40px;display:flex;align-items:center;justify-content:center;gap:12px}
+.drop-logo::before,.drop-logo::after{content:'';height:1px;width:50px;background:var(--accent);opacity:.4}
+.drop-box{border:2px dashed var(--border);border-radius:20px;padding:52px 44px;background:var(--surface);cursor:pointer;transition:all .2s;box-shadow:0 4px 24px rgba(0,0,0,.06)}
+.drop-box:hover,.drop-box.drag{border-color:var(--accent);background:#EEF5FB;box-shadow:0 8px 32px rgba(27,108,168,.12)}
+.drop-icon{font-size:52px;margin-bottom:18px;display:block}
+.drop-title{font-size:28px;font-weight:900;color:var(--text);margin-bottom:10px;letter-spacing:-.025em}
+.drop-title span{color:var(--accent)}
+.drop-sub{color:var(--muted);font-size:13.5px;margin-bottom:26px;line-height:1.75}
+.drop-btn{display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:#fff;font-family:'Raleway',sans-serif;font-weight:700;font-size:13px;padding:12px 30px;border-radius:9px;cursor:pointer;border:none;transition:all .15s;letter-spacing:.02em}
+.drop-btn:hover{background:#155c8f;box-shadow:0 4px 16px rgba(27,108,168,.35)}
+.drop-hint{margin-top:14px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted)}
+.drop-error{color:var(--red);font-size:12px;margin-top:10px;min-height:18px;font-family:'IBM Plex Mono',monospace}
+.drop-feats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:22px}
+.drop-feat{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:left}
+.drop-feat-icon{font-size:18px;margin-bottom:5px}
+.drop-feat-title{font-size:10px;font-weight:700;color:var(--text);font-family:'IBM Plex Mono',monospace;letter-spacing:.07em;text-transform:uppercase;margin-bottom:2px}
+.drop-feat-desc{font-size:11px;color:var(--muted);line-height:1.4}
+#file-input{display:none}
+
+/* ─── TOP BUTTONS ─── */
+.top-btn{position:fixed;top:14px;z-index:1000;border:none;border-radius:8px;padding:7px 15px;font-family:'IBM Plex Mono',monospace;font-size:11px;cursor:pointer;display:none;transition:all .15s;letter-spacing:.03em}
+#reload-btn{right:14px;background:var(--surface);color:var(--text);border:1px solid var(--border)}
+#reload-btn:hover{border-color:var(--accent);color:var(--accent)}
+#pdf-btn{right:130px;background:var(--surface);color:var(--text);border:1px solid var(--border)}
+#pdf-btn:hover{border-color:var(--accent2);color:var(--accent2)}
+
+/* ─── PRINT ─── */
+@page{size:A4 portrait;margin:8mm}
+@media print{
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+  #drop-screen,#reload-btn,#pdf-btn,.tab-bar,button{display:none!important}
+  #dashboard{display:block!important}
+  .tab-panel{display:block!important}
+  .pw{padding:0 8px 12px;max-width:100%}
+  .kg,.kg5{grid-template-columns:repeat(4,1fr)!important;gap:6px}
+  .cg,.cg2,.cg3{grid-template-columns:1fr 1fr!important;gap:8px}
+  .cc{padding:12px}
+  canvas{max-width:100%!important}
+  .ch{height:140px!important}
+  section{margin-top:14px}
+  .tw{overflow-x:visible!important}
+  table{font-size:8px!important}
+  td,th{padding:4px 6px!important}
+}
+
+/* ─── DASHBOARD ─── */
+#dashboard{display:none;position:relative}
+.pw{max-width:1340px;margin:0 auto;padding:0 32px 80px}
+
+/* ─── HERO ─── */
+.hero{background:linear-gradient(135deg,#0d2140 0%,#1b3a6b 55%,#0d2a55 100%);border-bottom:1px solid rgba(255,255,255,.1);position:relative;overflow:hidden}
+.hero-grid{position:absolute;inset:0;opacity:.05;background-image:linear-gradient(rgba(255,255,255,.5) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.5) 1px,transparent 1px);background-size:36px 36px}
+.hero-dots{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+.hero-inner{max-width:1340px;margin:0 auto;padding:40px 32px 52px;display:grid;grid-template-columns:1fr auto;align-items:end;gap:32px;position:relative;z-index:1}
+.hero-eyebrow{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.3em;text-transform:uppercase;color:#63b3f5;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.hero-dot{width:6px;height:6px;border-radius:50%;background:#63b3f5;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(1.7)}}
+.hero h1{font-size:clamp(22px,3.2vw,42px);font-weight:900;color:#fff;line-height:1.07;letter-spacing:-.03em;margin-bottom:8px}
+.hero h1 em{font-style:normal;color:#63b3f5}
+.hero-sub{color:rgba(255,255,255,.5);font-size:13px;font-weight:400}
+.hero-stats{display:flex;gap:28px;flex-wrap:wrap;justify-content:flex-end}
+.hs{text-align:right}
+.hs-v{font-family:'Raleway',sans-serif;font-size:29px;font-weight:900;color:#fff;line-height:1;letter-spacing:-.03em}
+.hs-v.blue{color:#63b3f5}.hs-v.green{color:#6ee79c}.hs-v.gold{color:#f0c63d}
+.hs-l{font-family:'IBM Plex Mono',monospace;font-size:9px;color:rgba(255,255,255,.4);letter-spacing:.12em;margin-top:4px;text-transform:uppercase}
+
+/* ─── TAB BAR ─── */
+.tab-bar{background:var(--surface);border-bottom:2px solid var(--border);position:sticky;top:0;z-index:100;box-shadow:0 2px 10px rgba(0,0,0,.07)}
+.tab-bar-inner{max-width:1340px;margin:0 auto;padding:0 32px;display:flex;overflow-x:auto}
+.tab-btn{padding:14px 18px;font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:500;color:var(--muted);background:none;border:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s;white-space:nowrap;display:flex;align-items:center;gap:7px;letter-spacing:.08em;text-transform:uppercase}
+.tab-btn:hover{color:var(--text)}
+.tab-btn.active{color:var(--text);border-bottom-color:var(--accent)}
+.tab-btn.green-tab.active{border-bottom-color:var(--accent2)}
+.tab-btn.gold-tab.active{border-bottom-color:var(--gold)}
+.tab-btn.purple-tab.active{border-bottom-color:var(--purple)}
+.tab-btn.orange-tab.active{border-bottom-color:var(--orange)}
+.tab-badge{font-size:9px;background:var(--surface2);color:var(--muted);border-radius:20px;padding:2px 7px;font-weight:600}
+.tab-btn.active .tab-badge{background:var(--accent);color:#fff}
+.tab-btn.green-tab.active .tab-badge{background:var(--accent2);color:#fff}
+.tab-btn.gold-tab.active .tab-badge{background:var(--gold);color:#fff}
+.tab-btn.purple-tab.active .tab-badge{background:var(--purple);color:#fff}
+.tab-btn.orange-tab.active .tab-badge{background:var(--orange);color:#fff}
+.tab-panel{display:none}.tab-panel.active{display:block}
+
+/* ─── SECTION ─── */
+section{margin-top:44px}
+.sl{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--accent);margin-bottom:5px}
+.sl.green{color:var(--accent2)}.sl.gold{color:var(--gold)}.sl.purple{color:var(--purple)}.sl.orange{color:var(--orange)}.sl.teal{color:var(--teal)}
+.st{font-size:clamp(16px,2.2vw,22px);font-weight:800;color:var(--text);letter-spacing:-.02em;margin-bottom:3px}
+.sd{color:var(--muted);font-size:12.5px;max-width:640px;margin-bottom:20px;line-height:1.75}
+.sr{width:28px;height:2px;background:linear-gradient(90deg,var(--accent),transparent);margin-bottom:16px;border-radius:2px}
+.sr.green{background:linear-gradient(90deg,var(--accent2),transparent)}
+.sr.gold{background:linear-gradient(90deg,var(--gold),transparent)}
+.sr.purple{background:linear-gradient(90deg,var(--purple),transparent)}
+.sr.orange{background:linear-gradient(90deg,var(--orange),transparent)}
+.sr.teal{background:linear-gradient(90deg,var(--teal),transparent)}
+
+/* ─── KPI CARDS ─── */
+.kg{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:12px}
+.kg5{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:12px}
+.kc{background:var(--card);border-radius:14px;padding:18px 20px;border:1px solid var(--border);position:relative;overflow:hidden;transition:transform .15s,box-shadow .15s}
+.kc:hover{transform:translateY(-2px);box-shadow:0 6px 24px rgba(0,0,0,.09)}
+.kc::after{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--accent)}
+.kc.green::after{background:var(--accent2)}.kc.gold::after{background:var(--gold)}.kc.red::after{background:var(--red)}.kc.purple::after{background:var(--purple)}.kc.orange::after{background:var(--orange)}.kc.teal::after{background:var(--teal)}
+.ki{font-size:22px;margin-bottom:9px;display:block}
+.kv{font-size:22px;font-weight:900;color:var(--text);letter-spacing:-.03em;line-height:1;margin-bottom:4px}
+.kl{font-size:11.5px;color:var(--muted);margin-bottom:2px;font-weight:500}
+.ks{font-size:10px;color:var(--accent);font-family:'IBM Plex Mono',monospace}
+.kc.green .ks{color:var(--accent2)}.kc.gold .ks{color:var(--gold)}.kc.red .ks{color:var(--red)}.kc.purple .ks{color:var(--purple)}.kc.orange .ks{color:var(--orange)}.kc.teal .ks{color:var(--teal)}
+
+/* ─── CHART CARDS ─── */
+.cg{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.cg3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+.cg2{display:grid;grid-template-columns:2fr 1fr;gap:16px}
+.cc{background:var(--card);border-radius:14px;padding:22px;border:1px solid var(--border)}
+.cc.wide{grid-column:1/-1}
+.ct{font-size:14px;font-weight:700;color:var(--text);margin-bottom:2px}
+.csub{font-size:10.5px;color:var(--muted);margin-bottom:14px;font-family:'IBM Plex Mono',monospace}
+.ch{position:relative}
+
+/* ─── TABLE ─── */
+.tw{overflow-x:auto;border-radius:12px;border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead tr{background:var(--surface2)}
+thead th{padding:10px 13px;text-align:left;color:var(--muted);font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.1em;font-weight:600;white-space:nowrap;text-transform:uppercase;border-bottom:1px solid var(--border)}
+thead th.r{text-align:right}
+tbody tr{border-bottom:1px solid var(--border);transition:background .1s}
+tbody tr:hover{background:var(--surface2)}
+tbody tr.tot{background:var(--surface2);font-weight:700;border-top:2px solid var(--border)}
+td{padding:9px 13px;color:var(--muted)}
+td.r{text-align:right}
+td:first-child{font-weight:600;color:var(--text)}
+td.mono{font-family:'IBM Plex Mono',monospace;font-size:11px}
+td.hi{color:var(--accent);font-weight:600}
+td.hi-g{color:var(--accent2);font-weight:600}
+td.td-red{color:var(--red)}
+td.td-gold{color:var(--gold)}
+
+/* ─── BADGE ─── */
+.badge{display:inline-block;border-radius:5px;padding:2px 8px;font-size:10px;font-family:'IBM Plex Mono',monospace;font-weight:500}
+.bg-green{background:#d1fae5;color:#065f46;border:1px solid #a7f3d0}
+.bg-red{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5}
+.bg-blue{background:#dbeafe;color:#1d4ed8;border:1px solid #93c5fd}
+.bg-yellow{background:#fef9c3;color:#854d0e;border:1px solid #fde047}
+.bg-gray{background:var(--surface2);color:var(--muted);border:1px solid var(--border)}
+
+/* ─── TOP LIST ─── */
+.top-list{list-style:none}
+.top-item{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)}
+.top-item:last-child{border-bottom:none}
+.top-rank{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);width:20px;text-align:right;flex-shrink:0}
+.top-name{font-size:12px;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+.top-bar-wrap{width:90px;height:4px;background:var(--surface3);border-radius:2px;flex-shrink:0}
+.top-bar{height:4px;border-radius:2px;background:var(--accent)}
+.top-count{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--accent);font-weight:600;min-width:36px;text-align:right}
+
+/* ─── FINDINGS ─── */
+.fg{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.fc{background:var(--card);border-radius:12px;padding:16px 18px;border:1px solid var(--border);border-left:3px solid var(--accent);display:flex;gap:12px;align-items:flex-start}
+.fc.green{border-left-color:var(--accent2)}.fc.gold{border-left-color:var(--gold)}.fc.purple{border-left-color:var(--purple)}.fc.red{border-left-color:var(--red)}.fc.orange{border-left-color:var(--orange)}.fc.teal{border-left-color:var(--teal)}
+.fn{font-size:22px;font-weight:900;color:var(--surface3);line-height:1;flex-shrink:0;width:26px}
+.ft{font-size:12px;line-height:1.6;color:var(--muted)}.ft strong{font-weight:700;color:var(--text)}
+
+/* ─── DIV CARDS ─── */
+.div-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+.div-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px;border-top:3px solid var(--accent)}
+.div-card:nth-child(2){border-top-color:var(--accent2)}
+.div-card:nth-child(3){border-top-color:var(--gold)}
+.div-card:nth-child(4){border-top-color:var(--purple)}
+.div-card-name{font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.06em}
+.div-card-prs{font-size:28px;font-weight:900;color:var(--text);line-height:1;margin-bottom:3px}
+.div-card-cost{font-size:12px;color:var(--muted)}
+.div-card-cost strong{color:var(--text);font-weight:700}
+.div-stat-row{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.div-stat{font-family:'IBM Plex Mono',monospace;font-size:10px;background:var(--surface2);border-radius:4px;padding:2px 7px;color:var(--muted)}
+
+/* ─── EXPLORER ─── */
+.de-toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:10px}
+.de-f{display:flex;flex-direction:column;gap:4px}
+.de-f label{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase}
+.de-f select,.de-f input{font-family:'Raleway',sans-serif;font-size:12px;color:var(--text);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;outline:none;min-width:130px}
+.de-f select:focus,.de-f input:focus{border-color:var(--accent)}
+.de-btn{padding:8px 16px;border-radius:7px;font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;border:none;cursor:pointer;align-self:flex-end;letter-spacing:.04em;text-transform:uppercase}
+.de-btn.apply{background:var(--accent);color:#fff}
+.de-btn.apply:hover{background:#155c8f}
+.de-btn.reset{background:var(--surface2);color:var(--muted);border:1px solid var(--border)}
+.de-btn.reset:hover{border-color:var(--red);color:var(--red)}
+.de-pills{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;min-height:22px}
+.de-pill{font-family:'IBM Plex Mono',monospace;font-size:10px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:20px;padding:3px 11px;display:inline-flex;align-items:center;gap:5px}
+.de-pill b{color:var(--text)}
+.de-tc{background:var(--card);border-radius:12px;border:1px solid var(--border);overflow:hidden}
+.de-tc table{font-size:11px}
+.de-tc thead th{font-size:9px;padding:10px 12px;cursor:pointer;user-select:none;white-space:nowrap;text-align:left}
+.de-tc thead th.r{text-align:right}
+.de-tc thead th:hover{background:var(--surface3)}
+.de-tc thead th.asc::after{content:" ▲";color:var(--accent);font-size:8px}
+.de-tc thead th.desc::after{content:" ▼";color:var(--accent);font-size:8px}
+.de-tc td{padding:8px 12px}
+.de-pager{display:flex;align-items:center;justify-content:space-between;margin-top:10px;gap:8px;flex-wrap:wrap;padding:2px 0}
+.de-pager-info{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted)}
+.de-pager-btns{display:flex;gap:6px}
+.de-pb{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 14px;font-size:11px;font-family:'IBM Plex Mono',monospace;cursor:pointer;color:var(--muted)}
+.de-pb:hover{border-color:var(--accent);color:var(--accent)}
+.de-pb:disabled{opacity:.35;cursor:not-allowed}
+.de-charts{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px}
+.de-chart-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 18px;border-top:3px solid var(--accent)}
+.de-chart-card:nth-child(2){border-top-color:var(--accent2)}
+.de-chart-card:nth-child(3){border-top-color:var(--gold)}
+.de-chart-title{font-size:13px;font-weight:700;color:var(--text);margin-bottom:2px}
+.de-chart-sub{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);margin-bottom:10px}
+
+/* ─── PROGRESS BARS ─── */
+.prog-item{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.prog-label{font-size:10px;color:var(--muted);min-width:100px;flex-shrink:0;text-align:right;font-family:'IBM Plex Mono',monospace;white-space:nowrap}
+.prog-bar-wrap{flex:1;height:6px;background:var(--surface3);border-radius:3px}
+.prog-bar{height:6px;border-radius:3px}
+.prog-pct{font-size:10px;font-family:'IBM Plex Mono',monospace;color:var(--muted);width:38px;text-align:right}
+
+footer{margin-top:56px;border-top:1px solid var(--border);padding-top:20px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+footer .fl{font-size:12px;color:var(--muted)}.fl strong{color:var(--text)}
+footer .fr{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);text-align:right;line-height:1.8}
+
+/* ─── DEV CREDIT ─── */
+.dev-credit{text-align:center;padding:14px 0 4px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:.15em;text-transform:uppercase;border-top:1px solid var(--border);margin-top:10px}
+
+/* ─── EXPLORER STAT PILLS ─── */
+.ex-stat-pills{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+.ex-stat-pill{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 18px;flex:1;min-width:160px;border-left:3px solid var(--accent);transition:box-shadow .15s}
+.ex-stat-pill:hover{box-shadow:0 4px 14px rgba(0,0,0,.08)}
+.ex-stat-pill.green{border-left-color:var(--accent2)}
+.ex-stat-pill.red{border-left-color:var(--red)}
+.ex-stat-pill.gold{border-left-color:var(--gold)}
+.ex-sp-icon{font-size:20px;flex-shrink:0}
+.ex-sp-val{font-size:20px;font-weight:900;color:var(--text);letter-spacing:-.03em;line-height:1}
+.ex-stat-pill.green .ex-sp-val{color:var(--accent2)}
+.ex-stat-pill.red .ex-sp-val{color:var(--red)}
+.ex-stat-pill.gold .ex-sp-val{color:var(--gold)}
+.ex-sp-lbl{font-size:10px;color:var(--muted);font-family:'IBM Plex Mono',monospace;letter-spacing:.06em;text-transform:uppercase;display:block;margin-top:2px}
+
+/* ─── 5-COLUMN MINI CHARTS ─── */
+.de-charts-5{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+.de-charts-5 .de-chart-card{border-top:3px solid var(--accent)}
+
+/* ─── CROSS-TAB ─── */
+#div-cat-xtab thead th{white-space:nowrap;font-size:9px;padding:8px 10px}
+#div-cat-xtab td{white-space:nowrap;font-size:11px;padding:8px 10px}
+#div-cat-xtab td.xt-val{text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text)}
+#div-cat-xtab td.xt-val.zero{color:var(--border)}
+#div-cat-xtab td.xt-total{font-weight:700;color:var(--accent);text-align:right;font-family:'IBM Plex Mono',monospace}
+#div-cat-xtab tr.xt-total-row{background:var(--surface2);font-weight:700;border-top:2px solid var(--border)}
+#div-cat-xtab tr.xt-total-row td{color:var(--accent);font-family:'IBM Plex Mono',monospace;font-size:11px;text-align:right}
+#div-cat-xtab tr.xt-total-row td:first-child{color:var(--text);text-align:left}
+
+@media(max-width:960px){.kg,.kg5,.div-cards{grid-template-columns:repeat(2,1fr)}.cg,.cg2,.cg3{grid-template-columns:1fr}.fg{grid-template-columns:1fr}.pw{padding:0 16px 60px}.hero-inner{grid-template-columns:1fr}.de-charts{grid-template-columns:1fr}.de-charts-5{grid-template-columns:repeat(2,1fr)}.ex-stat-pills{flex-wrap:wrap}#div-cat-donuts .cg{grid-template-columns:repeat(2,1fr)!important}}
+@media(max-width:600px){.de-charts-5{grid-template-columns:1fr}.ex-stat-pill{min-width:100%}}
+
+</style>
+</head>
+<body>
+
+<!-- DROP SCREEN -->
+<div id="drop-screen">
+  <div class="drop-wrap">
+    <div class="drop-logo">KAUST · IHP · Project Progress</div>
+    <div class="drop-box" id="drop-zone" onclick="document.getElementById('file-input').click()">
+      <span class="drop-icon">📊</span>
+      <div class="drop-title">IHP Project Progress <span>Dashboard</span></div>
+      <div class="drop-sub">Drop your <strong>Project Progress Tracking Sheet</strong> Excel file to generate a comprehensive analytics report with division-level analysis, trends, and a full data explorer.</div>
+      <button class="drop-btn">↑ &nbsp; Choose Excel File</button>
+      <div class="drop-hint">Accepts .xlsx · Reads Sheet1 automatically</div>
+      <div class="drop-error" id="drop-error"></div>
+    </div>
+    <div class="drop-feats">
+      <div class="drop-feat"><div class="drop-feat-icon">📈</div><div class="drop-feat-title">6 Dashboards</div><div class="drop-feat-desc">Overview, Trends, Categories, Requestors, Division Analysis, Explorer</div></div>
+      <div class="drop-feat"><div class="drop-feat-icon">🏢</div><div class="drop-feat-title">Division Analysis</div><div class="drop-feat-desc">Budget & PR counts per division with full breakdown</div></div>
+      <div class="drop-feat"><div class="drop-feat-icon">🔍</div><div class="drop-feat-title">Full Explorer</div><div class="drop-feat-desc">Search, filter and sort every PR record with live charts</div></div>
+    </div>
+  </div>
+  <input type="file" id="file-input" accept=".xlsx,.xls">
+</div>
+
+<button class="top-btn" id="reload-btn" onclick="document.getElementById('file-input').click()">⟳ New File</button>
+<button class="top-btn" id="pdf-btn" onclick="window.print()">⬇ PDF</button>
+
+<!-- DASHBOARD -->
+<div id="dashboard">
+<header class="hero">
+  <div class="hero-grid"></div>
+  <div class="hero-inner">
+    <div>
+      <div class="hero-eyebrow"><span class="hero-dot"></span>Live Analytics Report</div>
+                 <div class="header"><img alt="KAUST Logo" src="data:image/jpeg;base64,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" style="height: 90px; margin-bottom: 10px; border-radius: 50%; border: 2px solid rgba(200,151,58,0.7); padding: 14px; background: rgba(255,255,255,0.95);"/>
+      <h1>IHP Project Progress<br><em>Tracking Dashboard</em></h1>
+      <div class="hero-sub" id="hero-sub">Loading data…</div>
+    </div>
+    <div class="hero-stats">
+      <div class="hs"><div class="hs-v blue" id="hm-total">—</div><div class="hs-l">Total PRs</div></div>
+      <div class="hs"><div class="hs-v green" id="hm-completed">—</div><div class="hs-l">Completed</div></div>
+      <div class="hs"><div class="hs-v gold" id="hm-cost">—</div><div class="hs-l">Total Budget</div></div>
+    </div>
+  </div>
+</header>
+
+<nav class="tab-bar">
+  <div class="tab-bar-inner">
+    <button class="tab-btn active" onclick="switchTab('t1',this)">Overview <span class="tab-badge" id="badge-t1">—</span></button>
+    <button class="tab-btn green-tab" onclick="switchTab('t2',this)">Trends <span class="tab-badge" id="badge-t2">—</span></button>
+    <button class="tab-btn gold-tab" onclick="switchTab('t3',this)">Categories <span class="tab-badge" id="badge-t3">—</span></button>
+    <button class="tab-btn purple-tab" onclick="switchTab('t4',this)">Requestors <span class="tab-badge" id="badge-t4">—</span></button>
+    <button class="tab-btn orange-tab" onclick="switchTab('t5',this)">Division Analysis <span class="tab-badge" id="badge-t5">—</span></button>
+    <button class="tab-btn" onclick="switchTab('t6',this)">Explorer <span class="tab-badge" id="badge-t6">—</span></button>
+  </div>
+</nav>
+
+<!-- ══ TAB 1: OVERVIEW ══ -->
+<div id="t1" class="tab-panel active"><div class="pw">
+<section>
+  <div class="sl">Program KPIs</div>
+  <div class="st">At a Glance</div>
+  <div class="sd">Key performance indicators across the full IHP equipment support program.</div>
+  <div class="sr"></div>
+  <div class="kg" id="kpi-row1"></div>
+  <div class="kg" id="kpi-row2"></div>
+</section>
+<section>
+  <div class="sl">Annual Volume</div>
+  <div class="st">Requests by Year</div>
+  <div class="sd">Total PR volume per year with budget overlay.</div>
+  <div class="sr"></div>
+  <div class="cc wide">
+    <div class="ct">Annual PR Volume &amp; Approved Budget</div>
+    <div class="csub" id="annual-sub">Loading…</div>
+    <div class="ch" style="height:280px"><canvas id="annualChart"></canvas></div>
+  </div>
+</section>
+<section>
+  <div class="sl">Status &amp; Completion</div>
+  <div class="st">PR Status Breakdown</div>
+  <div class="sd">Distribution of statuses and completion rates across all tracked requests.</div>
+  <div class="sr"></div>
+  <div class="cg">
+    <div class="cc">
+      <div class="ct">Status Distribution</div>
+      <div class="csub">By count, all years</div>
+      <div class="ch" style="height:240px"><canvas id="statusDonut"></canvas></div>
+    </div>
+    <div class="cc">
+      <div class="ct">Completion Rate by Year</div>
+      <div class="csub">% of PRs completed each year</div>
+      <div class="ch" style="height:240px"><canvas id="compRateChart"></canvas></div>
+    </div>
+  </div>
+</section>
+<section>
+  <div class="sl">Open Items</div>
+  <div class="st">Pending &amp; Initiated PRs</div>
+  <div class="sd">Active requests currently requiring attention.</div>
+  <div class="sr"></div>
+  <div class="tw">
+    <table>
+      <thead><tr><th>PR</th><th>Request Date</th><th>Division</th><th>Requestor</th><th>Project Title</th><th>Status</th><th class="r">Budget (Approved)</th></tr></thead>
+      <tbody id="pending-tbody"></tbody>
+    </table>
+  </div>
+</section>
+<section>
+  <div class="sl">Annual Summary</div>
+  <div class="st">Year-by-Year Table</div>
+  <div class="sr"></div>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Year</th><th class="r">Total PRs</th><th class="r">Completed</th><th class="r">Cancelled</th><th class="r">Initiated</th><th class="r">Comp. Rate</th><th class="r">Total Budget</th><th class="r">Avg Budget/PR</th></tr></thead>
+      <tbody id="annual-tbody"></tbody>
+    </table>
+  </div>
+</section>
+<section>
+  <div class="sl">Key Insights</div>
+  <div class="st">Program Highlights</div>
+  <div class="sr"></div>
+  <div class="fg" id="findings"></div>
+</section>
+<footer><div class="fl"><strong>KAUST IHP Project Progress Dashboard</strong></div><div class="fr" id="footer-t1">—</div></footer>
+<div class="dev-credit">Developed by: gootte</div>
+</div></div>
+
+<!-- ══ TAB 2: TRENDS ══ -->
+<div id="t2" class="tab-panel"><div class="pw">
+<section>
+  <div class="sl green">Monthly Activity</div>
+  <div class="st">PR Volume Over Time</div>
+  <div class="sd">Monthly request submissions across all years.</div>
+  <div class="sr green"></div>
+  <div class="cc wide">
+    <div class="ct">Monthly PR Submissions</div>
+    <div class="csub" id="monthly-sub">All years</div>
+    <div class="ch" style="height:280px"><canvas id="monthlyChart"></canvas></div>
+  </div>
+</section>
+<section>
+  <div class="sl green">Division Trends</div>
+  <div class="st">Top Divisions — Annual Count</div>
+  <div class="sd">How the four primary research divisions have evolved year-over-year.</div>
+  <div class="sr green"></div>
+  <div class="cc wide">
+    <div class="ct">BESE · PSE · Core Labs · CEMSE — Annual PR Count</div>
+    <div class="csub">Top 4 research divisions only</div>
+    <div class="ch" style="height:280px"><canvas id="divTrendChart"></canvas></div>
+  </div>
+</section>
+<section>
+  <div class="sl green">Budget Trends</div>
+  <div class="st">Annual Budget Allocation</div>
+  <div class="sd">Approved budget committed per year across all divisions.</div>
+  <div class="sr green"></div>
+  <div class="cg">
+    <div class="cc">
+      <div class="ct">Annual Approved Budget</div>
+      <div class="csub">Approved Budget (USD)</div>
+      <div class="ch" style="height:240px"><canvas id="budgetLineChart"></canvas></div>
+    </div>
+    <div class="cc">
+      <div class="ct">Budget by Division</div>
+      <div class="csub">Cumulative total (USD)</div>
+      <div class="ch" style="height:240px"><canvas id="divBudgetChart"></canvas></div>
+    </div>
+  </div>
+</section>
+<footer><div class="fl"><strong>KAUST IHP — Trends</strong></div><div class="fr" id="footer-t2">—</div></footer>
+<div class="dev-credit">Developed by: gootte</div>
+</div></div>
+
+<!-- ══ TAB 3: CATEGORIES ══ -->
+<div id="t3" class="tab-panel"><div class="pw">
+<section>
+  <div class="sl gold">Request Types</div>
+  <div class="st">PR Category Breakdown</div>
+  <div class="sd">Distribution of project types across the PDEC classification system.</div>
+  <div class="sr gold"></div>
+  <div class="cg2">
+    <div class="cc">
+      <div class="ct">Request Type Distribution</div>
+      <div class="csub">By PDEC category</div>
+      <div class="ch" style="height:260px"><canvas id="catPieChart"></canvas></div>
+    </div>
+    <div class="cc">
+      <div class="ct">Top Request Types</div>
+      <div class="csub">By PR count</div>
+      <ul class="top-list" id="cat-list"></ul>
+    </div>
+  </div>
+</section>
+<section>
+  <div class="sl gold">Category Trends</div>
+  <div class="st">Category Volume Over Time</div>
+  <div class="sd">How each request type has evolved year-over-year — stacked to show total annual volume.</div>
+  <div class="sr gold"></div>
+  <div class="cc wide">
+    <div class="ct">Annual PR Count by Category</div>
+    <div class="csub">Top categories stacked by year</div>
+    <div class="ch" style="height:300px"><canvas id="catTrendChart"></canvas></div>
+  </div>
+</section>
+<section>
+  <div class="sl gold">Category Summary</div>
+  <div class="st">Full Category Table</div>
+  <div class="sd">Complete statistics for every request type — counts, completion rates, and budget.</div>
+  <div class="sr gold"></div>
+  <div class="tw">
+    <table>
+      <thead><tr>
+        <th>Category (PDEC)</th>
+        <th class="r">Total PRs</th>
+        <th class="r">Share %</th>
+        <th class="r">Completed</th>
+        <th class="r">Cancelled</th>
+        <th class="r">Initiated</th>
+        <th class="r">Comp. Rate</th>
+        <th class="r">Total Budget</th>
+        <th class="r">Avg Budget</th>
+      </tr></thead>
+      <tbody id="cat-tbody"></tbody>
+    </table>
+  </div>
+</section>
+<footer>
+  <div class="fl"><strong>KAUST IHP — Categories</strong></div>
+  <div class="fr" id="footer-t3">—</div>
+</footer>
+<div class="dev-credit">Developed by: gootte</div>
+</div></div>
+
+<!-- ══ TAB 4: REQUESTORS ══ -->
+<div id="t4" class="tab-panel"><div class="pw">
+<section>
+  <div class="sl purple">Top Requestors</div>
+  <div class="st">Most Active Requestors</div>
+  <div class="sd">Individuals who submitted the highest number of PRs across all years.</div>
+  <div class="sr purple"></div>
+  <div class="cg2">
+    <div class="cc">
+      <div class="ct">Top 15 Requestors by PR Count</div>
+      <div class="csub">Total PRs submitted</div>
+      <div class="ch" style="height:340px"><canvas id="requestorChart"></canvas></div>
+    </div>
+    <div class="cc">
+      <div class="ct">Top Requestors</div>
+      <div class="csub">Ranked by PR volume</div>
+      <ul class="top-list" id="requestor-list"></ul>
+    </div>
+  </div>
+</section>
+<section>
+  <div class="sl purple">Manager Load</div>
+  <div class="st">Project Manager Distribution</div>
+  <div class="sd">PR assignments across project managers.</div>
+  <div class="sr purple"></div>
+  <div class="cg">
+    <div class="cc">
+      <div class="ct">PRs by Project Manager</div>
+      <div class="csub">Total PRs managed</div>
+      <div class="ch" style="height:240px"><canvas id="managerChart"></canvas></div>
+    </div>
+    <div class="cc">
+      <div class="ct">Manager Overview</div>
+      <div class="csub">Count &amp; completion rate</div>
+      <div class="tw"><table>
+        <thead><tr><th>Manager</th><th class="r">PRs</th><th class="r">Completed</th><th class="r">Comp. %</th></tr></thead>
+        <tbody id="mgr-tbody"></tbody>
+      </table></div>
+    </div>
+  </div>
+</section>
+<footer><div class="fl"><strong>KAUST IHP — Requestors</strong></div><div class="fr" id="footer-t4">—</div></footer>
+<div class="dev-credit">Developed by: gootte</div>
+</div></div>
+
+<!-- ══ TAB 5: DIVISION ANALYSIS ══ -->
+<div id="t5" class="tab-panel"><div class="pw">
+<section>
+  <div class="sl orange">Division Overview</div>
+  <div class="st">Top Divisions at a Glance</div>
+  <div class="sd">Summary of the four largest research divisions by PR volume.</div>
+  <div class="sr orange"></div>
+  <div class="div-cards" id="div-cards"></div>
+  <div class="cg3">
+    <div class="cc">
+      <div class="ct">Division PR Share</div>
+      <div class="csub">By percentage of total PRs</div>
+      <div class="ch" style="height:240px"><canvas id="divShareChart"></canvas></div>
+    </div>
+    <div class="cc">
+      <div class="ct">Completion Rate by Division</div>
+      <div class="csub">% completed (top 6)</div>
+      <div class="ch" style="height:240px"><canvas id="divCompChart"></canvas></div>
+    </div>
+    <div class="cc">
+      <div class="ct">Budget Share by Division</div>
+      <div class="csub">Approved Budget (USD)</div>
+      <div class="ch" style="height:240px"><canvas id="divBudgetPieChart"></canvas></div>
+    </div>
+  </div>
+</section>
+<section>
+  <div class="sl orange">Division Trends</div>
+  <div class="st">Annual PR Count per Division</div>
+  <div class="sd">Year-over-year volume for all significant divisions — stacked bars show total activity each year.</div>
+  <div class="sr orange"></div>
+  <div class="cc wide">
+    <div class="ct">Annual PR Count by Division</div>
+    <div class="csub">Top 6 divisions stacked by year</div>
+    <div class="ch" style="height:300px"><canvas id="divAnnualTrendChart"></canvas></div>
+  </div>
+</section>
+<section>
+  <div class="sl orange">Category by Division</div>
+  <div class="st">Request Type Breakdown per Division</div>
+  <div class="sd">How the mix of PDEC request types differs across the top four divisions.</div>
+  <div class="sr orange"></div>
+  <div class="cc wide">
+    <div class="ct">Category Mix by Division (Top 4)</div>
+    <div class="csub">Stacked bar — each bar is a division, segments are categories</div>
+    <div class="ch" style="height:300px"><canvas id="divCatStackChart"></canvas></div>
+  </div>
+</section>
+<section>
+  <div class="sl orange">Category Focus</div>
+  <div class="st">Per-Division Category Breakdown</div>
+  <div class="sd">Individual donut for each of the top four divisions showing their unique category composition.</div>
+  <div class="sr orange"></div>
+  <div class="cg" style="grid-template-columns:repeat(4,1fr)" id="div-cat-donuts">
+    <div class="cc"><div class="ct" id="dcd-t0">—</div><div class="csub">Category focus</div><div class="ch" style="height:180px"><canvas id="divCatDonut0"></canvas></div></div>
+    <div class="cc"><div class="ct" id="dcd-t1">—</div><div class="csub">Category focus</div><div class="ch" style="height:180px"><canvas id="divCatDonut1"></canvas></div></div>
+    <div class="cc"><div class="ct" id="dcd-t2">—</div><div class="csub">Category focus</div><div class="ch" style="height:180px"><canvas id="divCatDonut2"></canvas></div></div>
+    <div class="cc"><div class="ct" id="dcd-t3">—</div><div class="csub">Category focus</div><div class="ch" style="height:180px"><canvas id="divCatDonut3"></canvas></div></div>
+  </div>
+</section>
+<section>
+  <div class="sl orange">Division Detail Table</div>
+  <div class="st">Full Division Breakdown</div>
+  <div class="sd">Complete statistics for all divisions with 5+ PRs.</div>
+  <div class="sr orange"></div>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Division</th><th class="r">Total PRs</th><th class="r">Completed</th><th class="r">Cancelled</th><th class="r">Initiated</th><th class="r">Comp. Rate</th><th class="r">Approved Budget</th><th class="r">Avg Budget/PR</th></tr></thead>
+      <tbody id="div-tbody"></tbody>
+    </table>
+  </div>
+</section>
+<section>
+  <div class="sl orange">Division × Category Cross-Tab</div>
+  <div class="st">Request Type Breakdown by Division</div>
+  <div class="sd">Full cross-tabulation — rows are divisions, columns are categories. Shows PR count in each cell.</div>
+  <div class="sr orange"></div>
+  <div class="tw" id="div-cat-xtab-wrap">
+    <table id="div-cat-xtab"></table>
+  </div>
+</section>
+<footer>
+  <div class="fl"><strong>KAUST IHP — Division Analysis</strong></div>
+  <div class="fr" id="footer-t5">—</div>
+</footer>
+<div class="dev-credit">Developed by: gootte</div>
+</div></div>
+
+<!-- ══ TAB 6: EXPLORER ══ -->
+<div id="t6" class="tab-panel"><div class="pw">
+<section>
+  <div class="sl">Data Explorer</div>
+  <div class="st">Browse All PRs</div>
+  <div class="sd">Filter, search and sort the complete PR dataset. Stats below update live with every filter.</div>
+  <div class="sr"></div>
+
+  <!-- Stat pills row -->
+  <div class="ex-stat-pills" id="ex-stat-pills">
+    <div class="ex-stat-pill"><span class="ex-sp-icon">📋</span><span class="ex-sp-val" id="esp-total">—</span><span class="ex-sp-lbl">Total Records</span></div>
+    <div class="ex-stat-pill green"><span class="ex-sp-icon">✅</span><span class="ex-sp-val" id="esp-comp">—</span><span class="ex-sp-lbl">Completed</span></div>
+    <div class="ex-stat-pill red"><span class="ex-sp-icon">❌</span><span class="ex-sp-val" id="esp-canc">—</span><span class="ex-sp-lbl">Cancelled</span></div>
+    <div class="ex-stat-pill gold"><span class="ex-sp-icon">💰</span><span class="ex-sp-val" id="esp-budget">—</span><span class="ex-sp-lbl">Total Budget</span></div>
+  </div>
+
+  <!-- 5-chart mini dashboard -->
+  <div class="de-charts-5">
+    <div class="de-chart-card">
+      <div class="de-chart-title">Status</div>
+      <div class="de-chart-sub">Filtered results</div>
+      <div class="ch" style="height:160px"><canvas id="ex-statusChart"></canvas></div>
+    </div>
+    <div class="de-chart-card" style="border-top-color:var(--accent2)">
+      <div class="de-chart-title">Divisions</div>
+      <div class="de-chart-sub">Top 10 by count</div>
+      <div class="ch" style="height:160px"><canvas id="ex-divChart"></canvas></div>
+    </div>
+    <div class="de-chart-card" style="border-top-color:var(--gold)">
+      <div class="de-chart-title">By Year</div>
+      <div class="de-chart-sub">PR submissions</div>
+      <div class="ch" style="height:160px"><canvas id="ex-yearChart"></canvas></div>
+    </div>
+    <div class="de-chart-card" style="border-top-color:var(--purple)">
+      <div class="de-chart-title">Category</div>
+      <div class="de-chart-sub">PDEC distribution</div>
+      <div class="ch" style="height:160px"><canvas id="ex-catChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="de-toolbar">
+    <div class="de-f">
+      <label>Search</label>
+      <input type="text" id="ex-search" placeholder="PR, title, requestor…" style="min-width:200px">
+    </div>
+    <div class="de-f">
+      <label>Division</label>
+      <select id="ex-div"><option value="">All Divisions</option></select>
+    </div>
+    <div class="de-f">
+      <label>Status</label>
+      <select id="ex-status"><option value="">All Statuses</option><option>Completed</option><option>Cancelled</option><option>Initiated</option><option>Closed</option></select>
+    </div>
+    <div class="de-f">
+      <label>Year</label>
+      <select id="ex-year"><option value="">All Years</option></select>
+    </div>
+    <div class="de-f">
+      <label>Type (PDEC)</label>
+      <select id="ex-type"><option value="">All Types</option></select>
+    </div>
+    <button class="de-btn apply" onclick="applyFilters()">Apply</button>
+    <button class="de-btn reset" onclick="resetFilters()">Reset</button>
+  </div>
+  <div class="de-pills" id="ex-pills"></div>
+  <div class="de-tc">
+    <table>
+      <thead><tr>
+        <th onclick="sortEx(0)" id="exh0">PR</th>
+        <th onclick="sortEx(1)" id="exh1">Request Date</th>
+        <th onclick="sortEx(2)" id="exh2">Division</th>
+        <th onclick="sortEx(3)" id="exh3">Requestor</th>
+        <th onclick="sortEx(4)" id="exh4" style="min-width:220px">Project Title</th>
+        <th onclick="sortEx(5)" id="exh5">Status</th>
+        <th onclick="sortEx(6)" id="exh6" class="r">Budget</th>
+        <th onclick="sortEx(7)" id="exh7" class="r">Progress%</th>
+        <th onclick="sortEx(8)" id="exh8">Type</th>
+      </tr></thead>
+      <tbody id="ex-tbody"></tbody>
+    </table>
+  </div>
+  <div class="de-pager">
+    <span class="de-pager-info" id="ex-info">—</span>
+    <div class="de-pager-btns">
+      <button class="de-pb" id="ex-prev" onclick="exPageFn(-1)" disabled>← Prev</button>
+      <button class="de-pb" id="ex-next" onclick="exPageFn(1)">Next →</button>
+    </div>
+  </div>
+</section>
+<footer>
+  <div class="fl"><strong>KAUST IHP — Explorer</strong></div>
+  <div class="fr" id="footer-t6">—</div>
+</footer>
+<div class="dev-credit">Developed by: gootte</div>
+</div></div>
+</div><!-- /dashboard -->
+
+<script>
+/* ════════════════════════════════════════════
+   UTILITIES
+════════════════════════════════════════════ */
+const $ = id => document.getElementById(id);
+const fmtN = n => n==null||isNaN(n)?'—':n.toLocaleString();
+const fmtC = n => n==null||isNaN(n)||n===0?'—':'$'+Math.round(n).toLocaleString();
+const fmtPct = n => n==null||isNaN(n)?'—':(n*100).toFixed(1)+'%';
+const fmtK = n => n>=1e6?'$'+(n/1e6).toFixed(1)+'M':n>=1e3?'$'+(n/1e3).toFixed(0)+'K':'$'+Math.round(n);
+const clean = s => (s||'').toString().trim();
+const stripDollar = s => parseFloat((s||'').toString().replace(/[$,]/g,'')) || 0;
+const COLORS = ['#1B6CA8','#27A85F','#D4820A','#7B55C0','#C0392B','#16A085','#C0692A','#2980B9','#8E44AD','#D35400','#27AE60','#C0392B'];
+
+Chart.defaults.font.family = "'IBM Plex Mono', monospace";
+Chart.defaults.font.size = 11;
+Chart.defaults.color = '#5A6478';
+
+let charts = {};
+function destroyChart(id){ if(charts[id]){ charts[id].destroy(); delete charts[id]; } }
+function makeChart(id, cfg){ destroyChart(id); charts[id] = new Chart($(id).getContext('2d'), cfg); return charts[id]; }
+
+/* ════════════════════════════════════════════
+   TAB SWITCHING
+════════════════════════════════════════════ */
+function switchTab(id, btn){
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  $(id).classList.add('active');
+  btn.classList.add('active');
+  setTimeout(()=>Object.values(charts).forEach(c=>{ try{c.resize()}catch(e){} }),50);
+}
+
+/* ════════════════════════════════════════════
+   FILE LOADING
+════════════════════════════════════════════ */
+$('file-input').addEventListener('change', e => loadFile(e.target.files[0]));
+
+const dz = $('drop-zone');
+dz.addEventListener('dragover', e=>{ e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', ()=>dz.classList.remove('drag'));
+dz.addEventListener('drop', e=>{ e.preventDefault(); dz.classList.remove('drag'); const f=e.dataTransfer.files[0]; if(f)loadFile(f); });
+
+function loadFile(file){
+  if(!file){ return; }
+  const err = $('drop-error');
+  err.textContent = '';
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const wb = XLSX.read(ev.target.result, {type:'array',cellDates:true});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      // Header is at row 3 (index 2, 0-based), data starts row 4
+      const raw = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+      // Find header row: look for 'PR' in col0
+      let hRow = -1;
+      for(let i=0;i<raw.length;i++){ if(clean(raw[i][0]).replace(/\s/g,'').toUpperCase()==='PR'){ hRow=i; break; } }
+      if(hRow<0){ err.textContent='Could not detect header row. Expected "PR" in column A.'; return; }
+      const headers = raw[hRow].map(h=>clean(h));
+      const rows = [];
+      for(let i=hRow+1;i<raw.length;i++){
+        const r = raw[i];
+        if(!r[0] && !r[3]) continue;
+        const obj = {};
+        headers.forEach((h,j)=>obj[h]=r[j]??'');
+        rows.push(obj);
+      }
+      if(rows.length<2){ err.textContent='No data rows found after header.'; return; }
+      buildDashboard(rows, headers);
+    } catch(ex){
+      err.textContent = 'Error: '+ex.message;
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+/* ════════════════════════════════════════════
+   MAIN BUILD
+════════════════════════════════════════════ */
+let ALL_ROWS = [];
+
+function buildDashboard(rows, headers){
+  ALL_ROWS = rows.map(r => {
+    const status = clean(r['Status']);
+    const div = normalizeDiv(clean(r['Division'] || r[' Division'] || ''));
+    const budget = stripDollar(r['Approved Budget (USD)'] || r['Approved Budget']);
+    const reqDate = r['Request Date'];
+    let year = null;
+    if(reqDate instanceof Date){ year = reqDate.getFullYear(); }
+    else if(typeof reqDate==='string'||typeof reqDate==='number'){
+      const d = new Date(reqDate); if(!isNaN(d)) year = d.getFullYear();
+    }
+    const prog = parseFloat(r[' Progress % Execution']||r['Progress % Execution']||0)||0;
+    const pdec = clean(r['PDEC (Internal-Only) Remarks']||'');
+    const contractor = clean(r['Contractor']||'');
+    const execLead = clean(r['Execution Lead']||'');
+    const manager = clean(r['Manager']||'');
+    const location = clean(r['Project Location']||'');
+    const requestor = clean(r['Requestor']||'').trim();
+    const title = clean(r['Project Title']||r['Unnamed: 3']||'');
+    const pr = clean(r['PR']||r['PR ']||'');
+    return { pr, title, div, status, budget, year, prog, pdec, contractor, execLead, manager, location, requestor, reqDate };
+  }).filter(r=>r.pr);
+
+  buildOverview();
+  buildTrends();
+  buildCategories();
+  buildRequestors();
+  buildDivision();
+  buildExplorer();
+
+  $('drop-screen').style.display = 'none';
+  $('dashboard').style.display = 'block';
+  $('reload-btn').style.display = 'block';
+  $('pdf-btn').style.display = 'block';
+}
+
+function normalizeDiv(d){
+  const m = {
+    'corelabs':'Core Labs','corelab':'Core Labs','core labs':'Core Labs',
+    'coreabs':'Core Labs','corelbas':'Core Labs',
+    'pse':'PSE'
+  };
+  return m[d.toLowerCase()] || d;
+}
+
+/* ════════════════════════════════════════════
+   HELPER — GROUP
+════════════════════════════════════════════ */
+function groupBy(arr, key, valFn=null){
+  const map = {};
+  arr.forEach(r=>{
+    const k = typeof key==='function'?key(r):r[key];
+    if(!map[k]) map[k] = [];
+    map[k].push(r);
+  });
+  return map;
+}
+
+function countBy(arr, key){
+  const map = {};
+  arr.forEach(r=>{ const k = typeof key==='function'?key(r):r[key]; map[k]=(map[k]||0)+1; });
+  return map;
+}
+
+function topN(obj, n=10){
+  return Object.entries(obj).filter(([k])=>k&&k!=='undefined'&&k!=='nan').sort((a,b)=>b[1]-a[1]).slice(0,n);
+}
+
+/* ════════════════════════════════════════════
+   TAB 1: OVERVIEW
+════════════════════════════════════════════ */
+function buildOverview(){
+  const rows = ALL_ROWS;
+  const total = rows.length;
+  const completed = rows.filter(r=>r.status==='Completed').length;
+  const cancelled = rows.filter(r=>r.status==='Cancelled').length;
+  const initiated = rows.filter(r=>r.status==='Initiated').length;
+  const totalBudget = rows.reduce((s,r)=>s+r.budget,0);
+  const avgBudget = totalBudget/rows.filter(r=>r.budget>0).length;
+  const compRate = completed/total;
+  const years = [...new Set(rows.map(r=>r.year).filter(Boolean))].sort();
+  const lastYear = Math.max(...years);
+  const thisYear = rows.filter(r=>r.year===lastYear);
+
+  $('hm-total').textContent = fmtN(total);
+  $('hm-completed').textContent = fmtN(completed);
+  $('hm-cost').textContent = fmtK(totalBudget);
+  $('hero-sub').textContent = `${total.toLocaleString()} Equipment PRs · ${years[0]}–${lastYear} · ${completed.toLocaleString()} Completed · $${Math.round(totalBudget/1e6).toLocaleString()}M Total Budget`;
+
+  $('badge-t1').textContent = fmtN(total);
+  $('badge-t2').textContent = years.length+' yrs';
+  $('badge-t3').textContent = [...new Set(rows.map(r=>r.pdec).filter(Boolean))].length;
+  $('badge-t4').textContent = [...new Set(rows.map(r=>r.requestor.trim()).filter(Boolean))].length;
+  $('badge-t5').textContent = [...new Set(rows.map(r=>r.div).filter(Boolean))].length;
+  $('badge-t6').textContent = fmtN(total);
+
+  const today = new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
+  ['footer-t1','footer-t2','footer-t3','footer-t4','footer-t5','footer-t6'].forEach(id=>{
+    const el=$(id); if(el) el.innerHTML=`Generated: ${today}<br>Data rows: ${total.toLocaleString()}<br>Years: ${years[0]}–${lastYear}`;
+  });
+
+  // KPI row1
+  $('kpi-row1').innerHTML = [
+    {cls:'',icon:'📋',v:fmtN(total),l:'Total PRs',s:`${years[0]}–${lastYear}`},
+    {cls:'green',icon:'✅',v:fmtN(completed),l:'Completed',s:(compRate*100).toFixed(1)+'% completion rate'},
+    {cls:'red',icon:'❌',v:fmtN(cancelled),l:'Cancelled',s:((cancelled/total)*100).toFixed(1)+'% of total'},
+    {cls:'gold',icon:'⏳',v:fmtN(initiated),l:'Initiated / Active',s:'Currently in progress'},
+  ].map(c=>`<div class="kc ${c.cls}"><span class="ki">${c.icon}</span><div class="kv">${c.v}</div><div class="kl">${c.l}</div><div class="ks">${c.s}</div></div>`).join('');
+
+  // KPI row2
+  $('kpi-row2').innerHTML = [
+    {cls:'',icon:'💰',v:fmtK(totalBudget),l:'Total Approved Budget',s:'Cumulative all years'},
+    {cls:'teal',icon:'📊',v:'$'+Math.round(avgBudget).toLocaleString(),l:'Avg Budget per PR',s:'PRs with budget only'},
+    {cls:'purple',icon:'🏢',v:[...new Set(rows.map(r=>r.div).filter(Boolean))].length,l:'Divisions Served',s:'Unique research divisions'},
+    {cls:'orange',icon:'👤',v:[...new Set(rows.map(r=>r.requestor.trim()).filter(Boolean))].length,l:'Unique Requestors',s:'Over '+years.length+' years'},
+  ].map(c=>`<div class="kc ${c.cls}"><span class="ki">${c.icon}</span><div class="kv">${c.v}</div><div class="kl">${c.l}</div><div class="ks">${c.s}</div></div>`).join('');
+
+  // Annual chart
+  const byYear = {};
+  rows.forEach(r=>{ if(r.year){ if(!byYear[r.year]) byYear[r.year]={count:0,budget:0,completed:0}; byYear[r.year].count++; byYear[r.year].budget+=r.budget; if(r.status==='Completed') byYear[r.year].completed++; } });
+  const yrKeys = Object.keys(byYear).sort();
+  $('annual-sub').textContent = `${yrKeys[0]}–${yrKeys[yrKeys.length-1]} · ${yrKeys.length} years · ${total.toLocaleString()} total PRs`;
+  makeChart('annualChart',{
+    type:'bar',
+    data:{labels:yrKeys,datasets:[
+      {label:'Total PRs',data:yrKeys.map(y=>byYear[y].count),backgroundColor:'rgba(27,108,168,.75)',borderRadius:4,order:2},
+      {label:'Completed',data:yrKeys.map(y=>byYear[y].completed),backgroundColor:'rgba(39,168,95,.65)',borderRadius:4,order:3},
+      {label:'Budget (M USD)',data:yrKeys.map(y=>+(byYear[y].budget/1e6).toFixed(2)),type:'line',yAxisID:'y1',borderColor:'#D4820A',backgroundColor:'rgba(212,130,10,.15)',borderWidth:2,pointRadius:4,pointBackgroundColor:'#D4820A',tension:.3,order:1},
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top'}},scales:{
+      y:{title:{display:true,text:'PR Count'},grid:{color:'#EEF1F5'}},
+      y1:{position:'right',title:{display:true,text:'Budget (M USD)'},grid:{drawOnChartArea:false}},
+    }}
+  });
+
+  // Status donut
+  const statusCounts = countBy(rows,'status');
+  const statusLabels = Object.keys(statusCounts);
+  const statusColors = {'Completed':'#27A85F','Cancelled':'#C0392B','Initiated':'#D4820A','Closed':'#7B55C0'};
+  makeChart('statusDonut',{
+    type:'doughnut',
+    data:{labels:statusLabels,datasets:[{data:statusLabels.map(l=>statusCounts[l]),backgroundColor:statusLabels.map(l=>statusColors[l]||'#999'),borderWidth:2,borderColor:'#fff'}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${ctx.raw.toLocaleString()} (${(ctx.raw/total*100).toFixed(1)}%)`}}}}
+  });
+
+  // Completion rate by year
+  makeChart('compRateChart',{
+    type:'bar',
+    data:{labels:yrKeys,datasets:[{label:'Completion Rate',data:yrKeys.map(y=>(byYear[y].completed/byYear[y].count*100).toFixed(1)),backgroundColor:yrKeys.map(y=>byYear[y].completed/byYear[y].count>.9?'#27A85F':'rgba(27,108,168,.7)'),borderRadius:4}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{min:0,max:100,title:{display:true,text:'% Completed'},grid:{color:'#EEF1F5'}},x:{grid:{display:false}}}}
+  });
+
+  // Pending table
+  const pending = rows.filter(r=>r.status==='Initiated'||r.status==='Closed');
+  const ptbody = pending.slice(0,30).map(r=>`<tr>
+    <td class="mono">${r.pr}</td>
+    <td class="mono">${r.reqDate instanceof Date ? r.reqDate.toLocaleDateString() : (r.reqDate||'').toString().slice(0,10)}</td>
+    <td>${r.div||'—'}</td>
+    <td>${r.requestor||'—'}</td>
+    <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.title||'—'}</td>
+    <td><span class="badge ${r.status==='Initiated'?'bg-yellow':'bg-gray'}">${r.status}</span></td>
+    <td class="r mono">${r.budget?fmtC(r.budget):'—'}</td>
+  </tr>`).join('');
+  $('pending-tbody').innerHTML = ptbody || '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:20px">No pending items found</td></tr>';
+
+  // Annual table
+  let annualRows = yrKeys.map(y=>{
+    const d=byYear[y]; const canc=rows.filter(r=>r.year==y&&r.status==='Cancelled').length;
+    const init=rows.filter(r=>r.year==y&&r.status==='Initiated').length;
+    const avgB = d.count>0?d.budget/d.count:0;
+    return `<tr>
+      <td class="mono">${y}</td>
+      <td class="r mono">${fmtN(d.count)}</td>
+      <td class="r mono hi-g">${fmtN(d.completed)}</td>
+      <td class="r mono td-red">${fmtN(canc)}</td>
+      <td class="r mono">${fmtN(init)}</td>
+      <td class="r mono">${(d.completed/d.count*100).toFixed(1)}%</td>
+      <td class="r mono td-gold">${fmtK(d.budget)}</td>
+      <td class="r mono">${avgB>0?fmtK(avgB):'—'}</td>
+    </tr>`;
+  });
+  const totBudget = rows.reduce((s,r)=>s+r.budget,0);
+  annualRows.push(`<tr class="tot"><td>TOTAL</td><td class="r mono">${fmtN(total)}</td><td class="r mono">${fmtN(completed)}</td><td class="r mono">${fmtN(cancelled)}</td><td class="r mono">${fmtN(initiated)}</td><td class="r mono">${(compRate*100).toFixed(1)}%</td><td class="r mono">${fmtK(totBudget)}</td><td class="r mono">${fmtK(totBudget/rows.filter(r=>r.budget>0).length)}</td></tr>`);
+  $('annual-tbody').innerHTML = annualRows.join('');
+
+  // Findings
+  const topDiv = topN(countBy(rows,'div'),1)[0];
+  const topReq = topN(countBy(rows,'requestor'),1)[0];
+  const topLoc = topN(countBy(rows,'location'),1)[0];
+  const peakYear = yrKeys.reduce((a,b)=>byYear[a].count>byYear[b].count?a:b);
+  const budgetYear = yrKeys.reduce((a,b)=>byYear[a].budget>byYear[b].budget?a:b);
+  const findings = [
+    {cls:'green',n:'01',text:`<strong>Completion rate: ${(compRate*100).toFixed(1)}%</strong> — ${completed.toLocaleString()} of ${total.toLocaleString()} PRs have been completed across all years.`},
+    {cls:'',n:'02',text:`<strong>${topDiv?topDiv[0]:'—'}</strong> is the most active division with <strong>${topDiv?fmtN(topDiv[1]):'—'} PRs</strong> (${topDiv?(topDiv[1]/total*100).toFixed(1):'—'}% of total).`},
+    {cls:'gold',n:'03',text:`<strong>Peak year: ${peakYear}</strong> with ${byYear[peakYear].count.toLocaleString()} PRs submitted — the highest single-year volume on record.`},
+    {cls:'blue',n:'04',text:`<strong>Total committed budget: ${fmtK(totalBudget)}</strong> across all approved projects over the ${years.length}-year tracking period.`},
+    {cls:'purple',n:'05',text:`<strong>${topReq?topReq[0]:'—'}</strong> is the most prolific requestor with <strong>${topReq?fmtN(topReq[1]):'—'} PRs</strong> submitted.`},
+    {cls:'orange',n:'06',text:`<strong>${topLoc?(topLoc[0].split(' - ')[1]||topLoc[0]):'—'}</strong> is the busiest location with <strong>${topLoc?fmtN(topLoc[1]):'—'} PRs</strong>.`},
+  ];
+  $('findings').innerHTML = findings.map(f=>`<div class="fc ${f.cls}"><div class="fn">${f.n}</div><div class="ft">${f.text}</div></div>`).join('');
+}
+
+/* ════════════════════════════════════════════
+   TAB 2: TRENDS
+════════════════════════════════════════════ */
+function buildTrends(){
+  const rows = ALL_ROWS;
+  // Monthly
+  const monthly = {};
+  rows.forEach(r=>{
+    if(!(r.reqDate instanceof Date)) return;
+    const key = r.reqDate.getFullYear()+'-'+(r.reqDate.getMonth()+1).toString().padStart(2,'0');
+    monthly[key]=(monthly[key]||0)+1;
+  });
+  const mKeys = Object.keys(monthly).sort();
+  $('monthly-sub').textContent = `${mKeys[0]||'—'} through ${mKeys[mKeys.length-1]||'—'} · ${mKeys.length} months`;
+  makeChart('monthlyChart',{
+    type:'line',
+    data:{labels:mKeys,datasets:[{label:'PRs / Month',data:mKeys.map(k=>monthly[k]),borderColor:'#27A85F',backgroundColor:'rgba(39,168,95,.1)',borderWidth:2,pointRadius:2,tension:.3,fill:true}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{maxTicksLimit:24,maxRotation:45},grid:{color:'#EEF1F5'}},y:{title:{display:true,text:'PR Count'},grid:{color:'#EEF1F5'}}}}
+  });
+
+  // Division trend
+  const topDivs = ['BESE','PSE','Core Labs','CEMSE'];
+  const years = [...new Set(rows.map(r=>r.year).filter(Boolean))].sort();
+  const divData = {};
+  topDivs.forEach(d=>divData[d]={});
+  rows.forEach(r=>{ if(r.year&&divData[r.div]) divData[r.div][r.year]=(divData[r.div][r.year]||0)+1; });
+  const dColors = ['#1B6CA8','#27A85F','#D4820A','#7B55C0'];
+  makeChart('divTrendChart',{
+    type:'line',
+    data:{labels:years,datasets:topDivs.map((d,i)=>({label:d,data:years.map(y=>divData[d][y]||0),borderColor:dColors[i],backgroundColor:dColors[i]+'22',borderWidth:2,pointRadius:3,tension:.3,fill:false}))},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top'}},scales:{y:{title:{display:true,text:'PR Count'},grid:{color:'#EEF1F5'}},x:{grid:{display:false}}}}
+  });
+
+  // Budget line
+  const byYear={};
+  rows.forEach(r=>{ if(r.year){ if(!byYear[r.year]) byYear[r.year]=0; byYear[r.year]+=r.budget; } });
+  makeChart('budgetLineChart',{
+    type:'bar',
+    data:{labels:years,datasets:[{label:'Approved Budget (M USD)',data:years.map(y=>(byYear[y]||0)/1e6),backgroundColor:'rgba(212,130,10,.7)',borderRadius:4}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{title:{display:true,text:'Million USD'},grid:{color:'#EEF1F5'}},x:{grid:{display:false}}}}
+  });
+
+  // Budget by division
+  const divBudgets={};
+  rows.forEach(r=>{ if(r.div&&r.budget) divBudgets[r.div]=(divBudgets[r.div]||0)+r.budget; });
+  const topDivB = topN(divBudgets,7);
+  makeChart('divBudgetChart',{
+    type:'doughnut',
+    data:{labels:topDivB.map(d=>d[0]),datasets:[{data:topDivB.map(d=>d[1]),backgroundColor:COLORS.slice(0,7),borderWidth:2,borderColor:'#fff'}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${fmtK(ctx.raw)}`}}}}
+  });
+}
+
+/* ════════════════════════════════════════════
+   TAB 3: CATEGORIES
+════════════════════════════════════════════ */
+function buildCategories(){
+  const rows = ALL_ROWS;
+
+  // ── Normalise PDEC (shared helper already declared as normPdec below,
+  //    but we need it here too — use inline alias)
+  const nCat = r => normPdec(r.pdec);
+
+  const catCounts = {};
+  rows.forEach(r=>{ const c=nCat(r); catCounts[c]=(catCounts[c]||0)+1; });
+  const cats = topN(catCounts, 8);
+  const total = rows.length;
+
+  // ── Pie chart
+  makeChart('catPieChart',{
+    type:'doughnut',
+    data:{labels:cats.map(c=>c[0]),datasets:[{data:cats.map(c=>c[1]),backgroundColor:COLORS.slice(0,cats.length),borderWidth:2,borderColor:'#fff'}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${ctx.raw.toLocaleString()} (${(ctx.raw/total*100).toFixed(1)}%)`}}}}
+  });
+
+  // ── Ranked list
+  const maxCat = cats[0]?cats[0][1]:1;
+  $('cat-list').innerHTML = cats.map((c,i)=>`<li class="top-item">
+    <span class="top-rank">${i+1}</span>
+    <span class="top-name">${c[0]}</span>
+    <span class="top-bar-wrap"><span class="top-bar" style="width:${Math.round(c[1]/maxCat*100)}%;background:${COLORS[i]}"></span></span>
+    <span class="top-count" style="color:${COLORS[i]}">${fmtN(c[1])}</span>
+  </li>`).join('');
+
+  // ── Category by year — stacked bar
+  const years = [...new Set(rows.map(r=>r.year).filter(Boolean))].sort();
+  const topCatNames = cats.slice(0,6).map(c=>c[0]);
+  const catYearData = {};
+  topCatNames.forEach(c=>{ catYearData[c]={}; years.forEach(y=>catYearData[c][y]=0); });
+  rows.forEach(r=>{
+    const c=nCat(r);
+    if(r.year && catYearData[c]) catYearData[c][r.year]++;
+  });
+  const catColors6 = ['#1B6CA8','#27A85F','#D4820A','#7B55C0','#C0392B','#16A085'];
+  makeChart('catTrendChart',{
+    type:'bar',
+    data:{
+      labels:years,
+      datasets:topCatNames.map((c,i)=>({
+        label:c,
+        data:years.map(y=>catYearData[c][y]||0),
+        backgroundColor:catColors6[i]+'cc',
+        borderRadius:2,
+        stack:'s'
+      }))
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:12}}},
+      scales:{
+        x:{stacked:true,grid:{display:false}},
+        y:{stacked:true,title:{display:true,text:'PR Count'},grid:{color:'#EEF1F5'}}
+      }
+    }
+  });
+
+  // ── Category full summary table
+  // Gather all unique cats (not just top 8)
+  const allCatNames = Object.keys(catCounts).filter(Boolean).sort((a,b)=>catCounts[b]-catCounts[a]);
+  const catRows = allCatNames.map(cat=>{
+    const rws = rows.filter(r=>nCat(r)===cat);
+    const cnt = rws.length;
+    const comp = rws.filter(r=>r.status==='Completed').length;
+    const canc = rws.filter(r=>r.status==='Cancelled').length;
+    const init = rws.filter(r=>r.status==='Initiated').length;
+    const budget = rws.reduce((s,r)=>s+r.budget,0);
+    const avgB = rws.filter(r=>r.budget>0).length>0 ? budget/rws.filter(r=>r.budget>0).length : 0;
+    return {cat,cnt,comp,canc,init,budget,avgB};
+  });
+  const totCnt = catRows.reduce((s,r)=>s+r.cnt,0);
+  $('cat-tbody').innerHTML = catRows.map(r=>`<tr>
+    <td>${r.cat||'—'}</td>
+    <td class="r mono">${fmtN(r.cnt)}</td>
+    <td class="r mono">${(r.cnt/totCnt*100).toFixed(1)}%</td>
+    <td class="r mono hi-g">${fmtN(r.comp)}</td>
+    <td class="r mono td-red">${fmtN(r.canc)}</td>
+    <td class="r mono">${fmtN(r.init)}</td>
+    <td class="r mono">${r.cnt>0?(r.comp/r.cnt*100).toFixed(1)+'%':'—'}</td>
+    <td class="r mono td-gold">${r.budget>0?fmtK(r.budget):'—'}</td>
+    <td class="r mono">${r.avgB>0?fmtK(r.avgB):'—'}</td>
+  </tr>`).join('')
+  + `<tr class="tot">
+    <td>TOTAL</td>
+    <td class="r mono">${fmtN(total)}</td>
+    <td class="r mono">100%</td>
+    <td class="r mono">${fmtN(rows.filter(r=>r.status==='Completed').length)}</td>
+    <td class="r mono">${fmtN(rows.filter(r=>r.status==='Cancelled').length)}</td>
+    <td class="r mono">${fmtN(rows.filter(r=>r.status==='Initiated').length)}</td>
+    <td class="r mono">${(rows.filter(r=>r.status==='Completed').length/total*100).toFixed(1)}%</td>
+    <td class="r mono">${fmtK(rows.reduce((s,r)=>s+r.budget,0))}</td>
+    <td class="r mono">—</td>
+  </tr>`;
+}
+
+/* ════════════════════════════════════════════
+   TAB 4: REQUESTORS
+════════════════════════════════════════════ */
+function buildRequestors(){
+  const rows = ALL_ROWS;
+  const reqCounts = countBy(rows.filter(r=>r.requestor), r=>r.requestor.trim());
+  const reqs = topN(reqCounts,15);
+
+  makeChart('requestorChart',{
+    type:'bar',
+    data:{labels:reqs.map(r=>r[0]),datasets:[{label:'PRs',data:reqs.map(r=>r[1]),backgroundColor:'rgba(123,85,192,.75)',borderRadius:4}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{color:'#EEF1F5'},title:{display:true,text:'PR Count'}},y:{grid:{display:false},ticks:{font:{size:10}}}}}
+  });
+
+  const top10 = topN(reqCounts,10);
+  const maxR = top10[0]?top10[0][1]:1;
+  $('requestor-list').innerHTML = top10.map((r,i)=>`<li class="top-item">
+    <span class="top-rank">${i+1}</span>
+    <span class="top-name">${r[0]}</span>
+    <span class="top-bar-wrap"><span class="top-bar" style="width:${Math.round(r[1]/maxR*100)}%;background:#7B55C0"></span></span>
+    <span class="top-count" style="color:#7B55C0">${fmtN(r[1])}</span>
+  </li>`).join('');
+
+  // Manager chart
+  const isRealName = s => s && s.length < 45 && s.length > 3 && !/\d/.test(s) && !s.includes('/') && s.trim().includes(' ');
+  const mgrCounts = countBy(rows.filter(r=>isRealName(r.manager)),'manager');
+  const mgrs = topN(mgrCounts,6);
+  makeChart('managerChart',{
+    type:'doughnut',
+    data:{labels:mgrs.map(m=>m[0]),datasets:[{data:mgrs.map(m=>m[1]),backgroundColor:COLORS.slice(0,mgrs.length),borderWidth:2,borderColor:'#fff'}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${ctx.raw.toLocaleString()}`}}}}
+  });
+
+  // Manager table
+  $('mgr-tbody').innerHTML = mgrs.map(([mgr,count])=>{
+    const mgrRows = rows.filter(r=>r.manager===mgr);
+    const comp = mgrRows.filter(r=>r.status==='Completed').length;
+    const rate = (comp/count*100).toFixed(1);
+    return `<tr><td>${mgr}</td><td class="r mono">${fmtN(count)}</td><td class="r mono hi-g">${fmtN(comp)}</td><td class="r mono">${rate}%</td></tr>`;
+  }).join('');
+}
+
+/* ════════════════════════════════════════════
+   TAB 5: DIVISION ANALYSIS
+════════════════════════════════════════════ */
+function buildDivision(){
+  const rows = ALL_ROWS;
+  const divGroup = groupBy(rows,'div');
+  const divStats = Object.entries(divGroup).map(([div,rws])=>({
+    div,
+    count:rws.length,
+    completed:rws.filter(r=>r.status==='Completed').length,
+    cancelled:rws.filter(r=>r.status==='Cancelled').length,
+    initiated:rws.filter(r=>r.status==='Initiated').length,
+    budget:rws.reduce((s,r)=>s+r.budget,0),
+  })).filter(d=>d.div&&d.count>=5).sort((a,b)=>b.count-a.count);
+
+  const top4 = divStats.slice(0,4);
+  const top6 = divStats.slice(0,6);
+  const dColors = ['#1B6CA8','#27A85F','#D4820A','#7B55C0','#C0392B','#16A085'];
+
+  // ── Div cards
+  $('div-cards').innerHTML = top4.map((d,i)=>`<div class="div-card">
+    <div class="div-card-name">${d.div}</div>
+    <div class="div-card-prs">${fmtN(d.count)}</div>
+    <div class="div-card-cost">Budget: <strong>${fmtK(d.budget)}</strong></div>
+    <div class="div-stat-row">
+      <span class="div-stat">✓ ${d.completed}</span>
+      <span class="div-stat">✗ ${d.cancelled}</span>
+      <span class="div-stat">${(d.completed/d.count*100).toFixed(0)}% done</span>
+    </div>
+  </div>`).join('');
+
+  // ── Share donut
+  const total = rows.length;
+  const otherCount = rows.length - top6.reduce((s,d)=>s+d.count,0);
+  makeChart('divShareChart',{
+    type:'doughnut',
+    data:{labels:[...top6.map(d=>d.div),'Other'],datasets:[{data:[...top6.map(d=>d.count),otherCount],backgroundColor:[...dColors,'#ccc'],borderWidth:2,borderColor:'#fff'}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${ctx.raw.toLocaleString()} (${(ctx.raw/total*100).toFixed(1)}%)`}}}}
+  });
+
+  // ── Completion rate bar
+  makeChart('divCompChart',{
+    type:'bar',
+    data:{labels:top6.map(d=>d.div),datasets:[{label:'Completion %',data:top6.map(d=>+(d.completed/d.count*100).toFixed(1)),backgroundColor:top6.map((d,i)=>dColors[i]),borderRadius:4}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{min:0,max:100,title:{display:true,text:'% Completed'},grid:{color:'#EEF1F5'}},x:{grid:{display:false}}}}
+  });
+
+  // ── Budget pie
+  makeChart('divBudgetPieChart',{
+    type:'pie',
+    data:{labels:top6.map(d=>d.div),datasets:[{data:top6.map(d=>d.budget),backgroundColor:dColors,borderWidth:2,borderColor:'#fff'}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${fmtK(ctx.raw)}`}}}}
+  });
+
+  // ── Division Trends — stacked bar (top 6 by year)
+  const years = [...new Set(rows.map(r=>r.year).filter(Boolean))].sort();
+  const divYearData = {};
+  top6.forEach(d=>{ divYearData[d.div]={}; years.forEach(y=>divYearData[d.div][y]=0); });
+  rows.forEach(r=>{ if(r.year&&divYearData[r.div]) divYearData[r.div][r.year]++; });
+  makeChart('divAnnualTrendChart',{
+    type:'bar',
+    data:{
+      labels:years,
+      datasets:top6.map((d,i)=>({
+        label:d.div,
+        data:years.map(y=>divYearData[d.div][y]||0),
+        backgroundColor:dColors[i]+'cc',
+        borderRadius:2,
+        stack:'s'
+      }))
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:12}}},
+      scales:{
+        x:{stacked:true,grid:{display:false}},
+        y:{stacked:true,title:{display:true,text:'PR Count'},grid:{color:'#EEF1F5'}}
+      }
+    }
+  });
+
+  // ── Category by Division — stacked bar (top 4 divs × top 5 categories)
+  const catColors5 = ['#1B6CA8','#27A85F','#D4820A','#7B55C0','#C0392B','#16A085'];
+  const allCatCounts = {};
+  rows.forEach(r=>{ const c=normPdec(r.pdec); allCatCounts[c]=(allCatCounts[c]||0)+1; });
+  const top5Cats = topN(allCatCounts,5).map(c=>c[0]);
+  const divCatData = {};
+  top4.forEach(d=>{ divCatData[d.div]={}; top5Cats.forEach(c=>divCatData[d.div][c]=0); });
+  rows.forEach(r=>{
+    const cat=normPdec(r.pdec);
+    if(divCatData[r.div]&&top5Cats.includes(cat)) divCatData[r.div][cat]++;
+  });
+  makeChart('divCatStackChart',{
+    type:'bar',
+    data:{
+      labels:top4.map(d=>d.div),
+      datasets:top5Cats.map((cat,i)=>({
+        label:cat,
+        data:top4.map(d=>divCatData[d.div][cat]||0),
+        backgroundColor:catColors5[i]+'cc',
+        borderRadius:2,
+        stack:'s'
+      }))
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:12}}},
+      scales:{
+        x:{stacked:true,grid:{display:false}},
+        y:{stacked:true,title:{display:true,text:'PR Count'},grid:{color:'#EEF1F5'}}
+      }
+    }
+  });
+
+  // ── Category Focus donuts (one per top-4 division)
+  top4.forEach((d,i)=>{
+    $(`dcd-t${i}`).textContent = d.div;
+    const divRows = rows.filter(r=>r.div===d.div);
+    const dc = {};
+    divRows.forEach(r=>{ const c=normPdec(r.pdec); dc[c]=(dc[c]||0)+1; });
+    const dcTop = topN(dc,6);
+    destroyChart(`divCatDonut${i}`);
+    charts[`divCatDonut${i}`] = new Chart($(`divCatDonut${i}`).getContext('2d'),{
+      type:'doughnut',
+      data:{labels:dcTop.map(c=>c[0]),datasets:[{data:dcTop.map(c=>c[1]),backgroundColor:catColors5.slice(0,dcTop.length),borderWidth:2,borderColor:'#fff'}]},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{size:9},boxWidth:9}},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${ctx.raw} (${(ctx.raw/d.count*100).toFixed(1)}%)`}}}}
+    });
+  });
+
+  // ── Detail table
+  $('div-tbody').innerHTML = divStats.map(d=>`<tr>
+    <td>${d.div}</td>
+    <td class="r mono">${fmtN(d.count)}</td>
+    <td class="r mono hi-g">${fmtN(d.completed)}</td>
+    <td class="r mono td-red">${fmtN(d.cancelled)}</td>
+    <td class="r mono">${fmtN(d.initiated)}</td>
+    <td class="r mono">${(d.completed/d.count*100).toFixed(1)}%</td>
+    <td class="r mono td-gold">${d.budget>0?fmtK(d.budget):'—'}</td>
+    <td class="r mono">${d.budget>0&&d.count>0?fmtK(d.budget/d.count):'—'}</td>
+  </tr>`).join('');
+
+  // ── Division × Category cross-tab
+  // All divs with ≥5 PRs, all cats, sorted
+  const xtabDivs = divStats.filter(d=>d.count>=5);
+  const allCatNamesXT = topN(allCatCounts,20).map(c=>c[0]);
+  // Build matrix
+  const matrix = {};
+  xtabDivs.forEach(d=>{ matrix[d.div]={}; allCatNamesXT.forEach(c=>matrix[d.div][c]=0); });
+  rows.forEach(r=>{
+    const cat=normPdec(r.pdec);
+    if(matrix[r.div]&&allCatNamesXT.includes(cat)) matrix[r.div][cat]++;
+  });
+  // Col totals
+  const colTotals = {};
+  allCatNamesXT.forEach(c=>{ colTotals[c]=xtabDivs.reduce((s,d)=>(s+(matrix[d.div][c]||0)),0); });
+  const grandTotal = xtabDivs.reduce((s,d)=>s+d.count,0);
+
+  // Short cat labels for header
+  const shortCat = s => s.length>16?s.slice(0,15)+'…':s;
+
+  let tbl = `<thead><tr><th>Division</th>`;
+  allCatNamesXT.forEach(c=>tbl+=`<th class="r" title="${c}">${shortCat(c)}</th>`);
+  tbl+=`<th class="r">Total</th></tr></thead><tbody>`;
+
+  xtabDivs.forEach(d=>{
+    tbl+=`<tr><td>${d.div}</td>`;
+    allCatNamesXT.forEach(c=>{
+      const v = matrix[d.div][c]||0;
+      tbl+=`<td class="xt-val${v===0?' zero':''}">${v===0?'·':v}</td>`;
+    });
+    tbl+=`<td class="xt-total">${fmtN(d.count)}</td></tr>`;
+  });
+  // Total row
+  tbl+=`<tr class="xt-total-row"><td>TOTAL</td>`;
+  allCatNamesXT.forEach(c=>tbl+=`<td>${colTotals[c]||0}</td>`);
+  tbl+=`<td>${fmtN(grandTotal)}</td></tr>`;
+  tbl+=`</tbody>`;
+  $('div-cat-xtab').innerHTML = tbl;
+}
+
+/* ════════════════════════════════════════════
+   TAB 6: EXPLORER
+════════════════════════════════════════════ */
+let exFiltered = [], exSortCol = 0, exSortDir = 1, exCurPage = 0;
+const PAGE_SIZE = 25;
+
+function buildExplorer(){
+  const rows = ALL_ROWS;
+  // Populate filters
+  const divs = [...new Set(rows.map(r=>r.div).filter(Boolean))].sort();
+  $('ex-div').innerHTML = '<option value="">All Divisions</option>'+divs.map(d=>`<option>${d}</option>`).join('');
+  const years = [...new Set(rows.map(r=>r.year).filter(Boolean))].sort();
+  $('ex-year').innerHTML = '<option value="">All Years</option>'+years.map(y=>`<option>${y}</option>`).join('');
+  const types = [...new Set(rows.map(r=>normPdec(r.pdec)).filter(Boolean))].sort();
+  $('ex-type').innerHTML = '<option value="">All Types</option>'+types.map(t=>`<option>${t}</option>`).join('');
+
+  exFiltered = [...rows];
+  renderExplorer();
+}
+
+function normPdec(p){
+  const s=(p||'').toLowerCase();
+  if(s.includes('equipment install')) return 'Equipment Installation';
+  if(s.includes('assessment')) return 'Assessment / PO Approval';
+  if(s.includes('asepc')) return 'ASEPC Proposal Request';
+  if(s.includes('casework')) return 'Casework Installation';
+  return p||'Other';
+}
+
+function applyFilters(){
+  const search = $('ex-search').value.toLowerCase();
+  const div = $('ex-div').value;
+  const status = $('ex-status').value;
+  const year = $('ex-year').value;
+  const type = $('ex-type').value;
+
+  exFiltered = ALL_ROWS.filter(r=>{
+    if(div && r.div!==div) return false;
+    if(status && r.status!==status) return false;
+    if(year && String(r.year)!==String(year)) return false;
+    if(type && normPdec(r.pdec)!==type) return false;
+    if(search){
+      const txt = [r.pr,r.title,r.requestor,r.div,r.location].join(' ').toLowerCase();
+      if(!txt.includes(search)) return false;
+    }
+    return true;
+  });
+  exCurPage = 0;
+
+  // Pills
+  const pills = [];
+  if(search) pills.push(`Search: <b>${search}</b>`);
+  if(div) pills.push(`Division: <b>${div}</b>`);
+  if(status) pills.push(`Status: <b>${status}</b>`);
+  if(year) pills.push(`Year: <b>${year}</b>`);
+  if(type) pills.push(`Type: <b>${type}</b>`);
+  $('ex-pills').innerHTML = pills.map(p=>`<span class="de-pill">${p}</span>`).join('');
+
+  renderExplorer();
+}
+
+function resetFilters(){
+  ['ex-search','ex-div','ex-status','ex-year','ex-type'].forEach(id=>{ const el=$(id); if(el.tagName==='INPUT')el.value=''; else el.value=''; });
+  exFiltered = [...ALL_ROWS]; exCurPage = 0;
+  $('ex-pills').innerHTML = '';
+  renderExplorer();
+}
+
+function exPageFn(dir){
+  const total = exFiltered.length;
+  const maxPage = Math.ceil(total/PAGE_SIZE)-1;
+  exCurPage = Math.max(0,Math.min(maxPage,exCurPage+dir));
+  renderExplorer();
+}
+
+function sortEx(col){
+  if(exSortCol===col) exSortDir*=-1; else { exSortCol=col; exSortDir=1; }
+  document.querySelectorAll('.de-tc thead th').forEach((th,i)=>{ th.classList.remove('asc','desc'); if(i===col) th.classList.add(exSortDir===1?'asc':'desc'); });
+  const getters = [r=>+r.pr||0, r=>r.reqDate instanceof Date?r.reqDate:new Date(r.reqDate||0), r=>r.div, r=>r.requestor, r=>r.title, r=>r.status, r=>r.budget, r=>r.prog, r=>normPdec(r.pdec)];
+  exFiltered.sort((a,b)=>{ const av=getters[col](a),bv=getters[col](b); return av<bv?-exSortDir:av>bv?exSortDir:0; });
+  exCurPage = 0;
+  renderExplorer();
+}
+
+function renderExplorer(){
+  const total = exFiltered.length;
+  const start = exCurPage*PAGE_SIZE;
+  const slice = exFiltered.slice(start, start+PAGE_SIZE);
+
+  // ── Stat pills
+  const comp = exFiltered.filter(r=>r.status==='Completed').length;
+  const canc = exFiltered.filter(r=>r.status==='Cancelled').length;
+  const bud  = exFiltered.reduce((s,r)=>s+r.budget,0);
+  $('esp-total').textContent  = fmtN(total);
+  $('esp-comp').textContent   = fmtN(comp);
+  $('esp-canc').textContent   = fmtN(canc);
+  $('esp-budget').textContent = fmtK(bud);
+
+  const statusBadge = s => {
+    if(s==='Completed') return `<span class="badge bg-green">${s}</span>`;
+    if(s==='Cancelled') return `<span class="badge bg-red">${s}</span>`;
+    if(s==='Initiated') return `<span class="badge bg-yellow">${s}</span>`;
+    return `<span class="badge bg-gray">${s}</span>`;
+  };
+
+  $('ex-tbody').innerHTML = slice.map(r=>`<tr>
+    <td class="mono">${r.pr}</td>
+    <td class="mono">${r.reqDate instanceof Date?r.reqDate.toLocaleDateString():(r.reqDate||'').toString().slice(0,10)}</td>
+    <td>${r.div||'—'}</td>
+    <td>${r.requestor||'—'}</td>
+    <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.title}">${r.title||'—'}</td>
+    <td>${statusBadge(r.status)}</td>
+    <td class="r mono">${r.budget?fmtC(r.budget):'—'}</td>
+    <td class="r mono">${r.prog!=null&&r.prog!==''?Math.round(r.prog*100)+'%':'—'}</td>
+    <td style="max-width:140px;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${normPdec(r.pdec)||'—'}</td>
+  </tr>`).join('');
+
+  const pageMax = Math.ceil(total/PAGE_SIZE);
+  $('ex-info').textContent = `Showing ${start+1}–${Math.min(start+PAGE_SIZE,total)} of ${total.toLocaleString()} PRs (page ${exCurPage+1}/${Math.max(1,pageMax)})`;
+  $('ex-prev').disabled = exCurPage===0;
+  $('ex-next').disabled = exCurPage>=pageMax-1;
+
+  // ── Status donut
+  const statusC = countBy(exFiltered,'status');
+  destroyChart('ex-statusChart');
+  charts['ex-statusChart'] = new Chart($('ex-statusChart').getContext('2d'),{
+    type:'doughnut',
+    data:{labels:Object.keys(statusC),datasets:[{data:Object.values(statusC),backgroundColor:Object.keys(statusC).map(s=>s==='Completed'?'#27A85F':s==='Cancelled'?'#C0392B':s==='Initiated'?'#D4820A':'#7B55C0'),borderWidth:2,borderColor:'#fff'}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{size:10}}}}}
+  });
+
+  // ── Top 10 divisions bar
+  const divC = countBy(exFiltered,'div');
+  const topDivC = topN(divC,10);
+  destroyChart('ex-divChart');
+  charts['ex-divChart'] = new Chart($('ex-divChart').getContext('2d'),{
+    type:'bar',
+    data:{labels:topDivC.map(d=>d[0]),datasets:[{label:'PRs',data:topDivC.map(d=>d[1]),backgroundColor:'rgba(27,108,168,.75)',borderRadius:3}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{color:'#EEF1F5'}},y:{grid:{display:false},ticks:{font:{size:8}}}}}
+  });
+
+  // ── By year bar
+  const yrC = countBy(exFiltered.filter(r=>r.year),'year');
+  const yrKeys = Object.keys(yrC).sort();
+  destroyChart('ex-yearChart');
+  charts['ex-yearChart'] = new Chart($('ex-yearChart').getContext('2d'),{
+    type:'bar',
+    data:{labels:yrKeys,datasets:[{label:'PRs',data:yrKeys.map(k=>yrC[k]),backgroundColor:'rgba(39,168,95,.7)',borderRadius:3}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{grid:{color:'#EEF1F5'}},x:{grid:{display:false},ticks:{font:{size:9}}}}}
+  });
+
+  // ── Category donut
+  const catC = {};
+  exFiltered.forEach(r=>{ const c=normPdec(r.pdec); catC[c]=(catC[c]||0)+1; });
+  const topCatC = topN(catC,6);
+  destroyChart('ex-catChart');
+  charts['ex-catChart'] = new Chart($('ex-catChart').getContext('2d'),{
+    type:'doughnut',
+    data:{labels:topCatC.map(c=>c[0]),datasets:[{data:topCatC.map(c=>c[1]),backgroundColor:COLORS.slice(0,topCatC.length),borderWidth:2,borderColor:'#fff'}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{size:9},boxWidth:9}},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${ctx.raw.toLocaleString()} (${(ctx.raw/total*100).toFixed(1)}%)`}}}}
+  });
+
+  // ── Top 10 divisions horizontal bar (dedicated chart)
+}
+
+// Wire up pager after DOM ready
+window.addEventListener('DOMContentLoaded', () => {
+  const prev = $('ex-prev'), next = $('ex-next');
+  if(prev) prev.onclick = () => exPageFn(-1);
+  if(next) next.onclick = () => exPageFn(1);
+});
+</script>
+</body>
+</html>
